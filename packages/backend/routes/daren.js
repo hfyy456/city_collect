@@ -6,8 +6,24 @@ async function routes(fastify, options) {
   // Get all darens
   fastify.get('/api/darens', async (request, reply) => {
     try {
-      const darens = await Daren.find();
+      const { period } = request.query;
+      const query = {};
+      if (period) {
+        query.period = { $regex: period, $options: 'i' }; // Use regex for fuzzy search
+      }
+      const darens = await Daren.find(query);
       reply.send(darens);
+    } catch (err) {
+      reply.code(500).send(err);
+    }
+  });
+
+  // Get distinct periods
+  fastify.get('/api/periods', async (request, reply) => {
+    try {
+      const periods = await Daren.find().distinct('period');
+      // filter out null or empty periods
+      reply.send(periods.filter(p => p));
     } catch (err) {
       reply.code(500).send(err);
     }
@@ -68,10 +84,10 @@ async function routes(fastify, options) {
       if (cookie) {
         headers['Cookie'] = cookie;
       }
-      
+
       const { data } = await axios.get(url, { headers });
       const $ = cheerio.load(data);
-      
+
       const pageHtml = $.html();
       const initialStateMatch = pageHtml.match(/window\.__INITIAL_STATE__\s*=\s*({.*?});/);
       let parsedInfo = {};
@@ -131,6 +147,78 @@ async function routes(fastify, options) {
     } catch (err) {
       console.error(err);
       reply.code(500).send({ message: 'Error parsing URL' });
+    }
+  });
+
+  // Parse note info from Xiaohongshu note URL using Puppeteer
+  fastify.post('/api/parse-xhs-note', async (request, reply) => {
+    const { url, cookie } = request.body;
+    if (!url) {
+      return reply.code(400).send({ message: 'URL is required' });
+    }
+    if (!cookie) {
+        return reply.code(400).send({ message: 'Cookie is required for parsing notes' });
+    }
+
+    let browser = null;
+    try {
+      const puppeteer = require('puppeteer');
+      browser = await puppeteer.launch({ 
+        headless: true, // headless: true for no UI
+        executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+      });
+      const page = await browser.newPage();
+      
+      // Manually set cookie
+      const cookieObject = {
+        name: 'xhsTracker', // A common cookie name, might need adjustment
+        value: cookie,
+        domain: '.xiaohongshu.com',
+        path: '/',
+      };
+      await page.setCookie(cookieObject);
+      
+      await page.goto(url, { waitUntil: 'networkidle2' }); // Wait until network is idle
+
+      // Wait for the specific element that contains the stats to appear
+      await page.waitForSelector('.engage-bar-style .buttons');
+
+      const noteData = await page.evaluate(() => {
+        const title = document.querySelector('#noteContainer .title')?.innerText.trim() || '';
+        
+        const likeEl = document.querySelector('.like-wrapper .count');
+        const collectEl = document.querySelector('.collect-wrapper .count');
+        const commentEl = document.querySelector('.chat-wrapper .count');
+
+        // Note: Author selectors are best-guesses and might need adjustment.
+        const authorName = document.querySelector('.author-info .name')?.innerText.trim() || '';
+        const authorLink = document.querySelector('.author-info a')?.href || '';
+        
+        const likes = likeEl ? parseInt(likeEl.innerText.replace(/,/g, ''), 10) : 0;
+        const collections = collectEl ? parseInt(collectEl.innerText.replace(/,/g, ''), 10) : 0;
+        const comments = commentEl ? parseInt(commentEl.innerText.replace(/,/g, ''), 10) : 0;
+        
+        return {
+          title,
+          likes,
+          collections,
+          comments,
+          author: {
+            nickname: authorName,
+            homePage: authorLink,
+          },
+        };
+      });
+
+      reply.send(noteData);
+
+    } catch (err) {
+      console.error('Puppeteer parsing error:', err);
+      reply.code(500).send({ message: 'Failed to parse note page with Puppeteer.' });
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
     }
   });
 }

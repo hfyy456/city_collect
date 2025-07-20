@@ -18,6 +18,7 @@ const DarenSchema = new Schema({
   mainPublishLink: { type: String },
   syncPublishLink: { type: String },
   remarks: { type: String },
+  douyinLink: { type: String },
   dianping: { type: String },
   exposure: { type: Number },
   reads: { type: Number },
@@ -26,6 +27,8 @@ const DarenSchema = new Schema({
   collections: { type: Number },
   forwards: { type: Number },
   cooperationMethod: { type: String },
+  period: { type: String },
+  fee: { type: Number },
   // New fields for cookie-based parsing
   xiaohongshuId: { type: String },
   ipLocation: { type: String },

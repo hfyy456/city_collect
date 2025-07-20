@@ -1,10 +1,10 @@
 {
-  "name": "city_collect",
+  "name": "city-collect",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "concurrently \"npm run start --prefix packages/backend\" \"npm run dev --prefix packages/frontend\""
   },
   "keywords": [],
   "author": "",
@@ -13,5 +13,8 @@
     "axios": "^1.10.0",
     "cheerio": "^1.1.0",
     "mongoose": "^8.16.4"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

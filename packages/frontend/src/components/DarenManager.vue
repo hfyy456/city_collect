@@ -4,6 +4,9 @@
     <el-main>
       <div class="toolbar">
         <el-button type="primary" @click="showAddDialog">添加新达人</el-button>
+        <el-button type="info" @click="showCookieModal = true" style="margin-left: 10px">
+          Cookie管理
+        </el-button>
         <el-input
           v-model="periodFilter"
           placeholder="按期数筛选 (例如: 7.22)"
@@ -18,13 +21,16 @@
 
       <!-- Main Data Table -->
       <el-table
-        :data="darenList"
-        v-loading="loading"
-        style="width: 100%"
-        border
-        stripe
-        height="calc(100vh - 140px)"
-      >
+  :data="darenList"
+  v-loading="loading"
+  style="width: 100%"
+  border
+  stripe
+  height="calc(100vh - 140px)"
+  :row-key="'_id'"
+  :row-class-name="({ row }) => editingId === row._id ? 'edit-row' : ''"
+  @sort-change="handleSortChange"
+>
         <!-- Operations Column (Fixed) -->
         <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="scope">
@@ -33,6 +39,7 @@
                 size="small"
                 type="success"
                 @click="handleSave(scope.row)"
+                :loading="saving"
                 >保存</el-button
               >
               <el-button size="small" @click="handleCancelEdit">取消</el-button>
@@ -232,6 +239,7 @@
                     v-else-if="column.type === 'date' && scope.row[column.prop]"
                     >{{ formatDate(scope.row[column.prop]) }}</span
                   >
+                  <span v-else-if="column.type === 'number'">{{ formatNumber(scope.row[column.prop]) }}</span>
                   <span v-else>{{ scope.row[column.prop] }}</span>
                 </div>
               </div>
@@ -265,17 +273,23 @@
             <el-input
               v-model="addForm.homePage"
               placeholder="粘贴小红书用户主页链接，格式如：https://www.xiaohongshu.com/user/profile/xxx"
-              style="width: calc(100% - 120px); margin-right: 8px"
+              style="width: 100%"
+              @input="handleHomePageInput"
+              @focus="showUrlFormatTip = true"
+              @blur="showUrlFormatTip = false"
             ></el-input>
-            <el-button @click="parsePageInfo" :loading="parsing" type="primary"
-              >解析主页</el-button
-            >
+            <el-tooltip v-if="showUrlFormatTip" effect="light" placement="top-start">
+              <template #content>
+                格式示例: https://www.xiaohongshu.com/user/profile/xxx
+              </template>
+              <div class="url-format-tip">请输入正确格式的用户主页链接</div>
+            </el-tooltip>
           </el-form-item>
 
           <el-divider content-position="left">基本信息</el-divider>
 
           <el-row :gutter="20">
-            <el-col :span="12"
+            <el-col :span="12" style="margin-bottom: 16px"
               ><el-form-item label="达人昵称" prop="nickname"
                 ><el-input v-model="addForm.nickname"></el-input></el-form-item
             ></el-col>
@@ -393,24 +407,60 @@
         <template #footer>
           <span class="dialog-footer">
             <el-button @click="addDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="handleAddNew">提交</el-button>
+            <el-button type="primary" @click="handleAddNew" :loading="submitting">提交</el-button>
           </span>
         </template>
       </el-dialog>
-    </el-main>
-  </el-container>
+
+    <!-- Cookie Management Modal -->
+    <el-dialog
+      v-model="showCookieModal"
+      title="小红书Cookie管理"
+      width="60%"
+    >
+      <el-form size="large">
+        <el-form-item label="当前Cookie" style="margin-bottom: 20px">
+          <el-input
+            v-model="cookie"
+            type="textarea"
+            :rows="6"
+            placeholder="请输入小红书Cookie"
+          ></el-input>
+        </el-form-item>
+        <el-alert
+          title="注意"
+          type="info"
+          description="Cookie用于获取小红书用户数据和笔记信息，有效期通常为7-30天。当解析功能失败时，请更新Cookie。"
+          show-icon
+        ></el-alert>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCookieModal = false">取消</el-button>
+        <el-button type="primary" @click="showCookieModal = false">保存</el-button>
+      </template>
+    </el-dialog>
+
+  </el-main>
+</el-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch } from "vue";
-import axios from "axios";
+import { ref, onMounted, reactive, watch } from 'vue';
+import axios from 'axios';
+
 import { ElMessage } from "element-plus";
+import { getCookie, setCookie } from '@/utils/cookieManager';
 import { ArrowDown } from "@element-plus/icons-vue";
 
 import type { FormInstance, FormRules } from "element-plus";
 
 // Refs for table and dialogs
 const loading = ref(true);
+
+
+const currentPage = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
 const darenList = ref<any[]>([]);
 const addDialogVisible = ref(false);
 const parsing = ref(false);
@@ -419,14 +469,28 @@ const periodOptions = ref<string[]>([]);
 
 // Refs for in-table editing
 const editingId = ref<string | null>(null);
-const editForm = ref<any>({});
+  const editForm = ref<any>({});
+  const saving = ref(false);
+  const submitting = ref(false);
+  const showCookieModal = ref(false);
 
 // Refs for adding new daren
 const addFormRef = ref<FormInstance>();
-const cookie = ref("");
+const cookie = ref(getCookie());
 
-// Table column definitions with grouping
+  // Table column definitions with grouping
+// 添加排序功能的列定义
 const columnGroups = [
+  { label: '基本信息', children: [
+    { prop: 'platform', label: '平台', width: 100, sortable: true },
+    { prop: 'period', label: '期数', width: 100, sortable: true },
+    { prop: 'fee', label: '费用', type: 'number', width: 120, sortable: true, formatter: (row: any) => `¥${formatNumber(row.fee)}` },
+    { prop: 'followers', label: '粉丝数', width: 120, sortable: true },
+    { prop: 'xiaohongshuId', label: '小红书ID', width: 150 },
+    { prop: 'ipLocation', label: 'IP属地', width: 120 },
+    { prop: 'likesAndCollections', label: '获赞与收藏', width: 120, sortable: true },
+    { prop: 'accountType', label: '账号类型', width: 120 }
+  ]},
   {
     label: "基本信息",
     children: [
@@ -464,9 +528,9 @@ const columnGroups = [
   {
     label: "数据指标",
     children: [
-      { prop: "likes", label: "点赞", type: "number", width: 120 },
-      { prop: "collections", label: "收藏", type: "number", width: 120 },
-      { prop: "comments", label: "评论", type: "number", width: 120 },
+      { prop: "likes", label: "点赞", type: "number", width: 120, sortable: true },
+      { prop: "collections", label: "收藏", type: "number", width: 120, sortable: true },
+      { prop: "comments", label: "评论", type: "number", width: 120, sortable: true },
     ],
   },
   {
@@ -481,6 +545,14 @@ const isUrl = (prop: string) =>
   ["mainPublishLink", "syncPublishLink"].includes(prop);
 
 // Function to format date to YYYY-MM-DD
+// 数字格式化函数 - 添加千分位和货币符号
+const formatNumber = (num: number | string): string => {
+  if (!num) return '0';
+  const number = typeof num === 'string' ? parseFloat(num) : num;
+  return number.toLocaleString('zh-CN');
+};
+
+// 日期格式化函数
 const formatDate = (dateString: string | Date): string => {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -527,9 +599,25 @@ const addForm = ref(getEmptyForm());
 
 // Validation rules
 const rules = reactive<FormRules>({
-  nickname: [{ required: true, message: "达人昵称不能为空", trigger: "blur" }],
+    nickname: [{ required: true, message: "达人昵称不能为空", trigger: "blur" }],
   homePage: [{ type: "url", message: "请输入有效的主页链接", trigger: "blur" }],
-});
+  period: [{ required: true, message: '请选择期数', trigger: 'change' }],
+    followers: [
+      { required: true, message: "粉丝数不能为空", trigger: "blur" },
+      { type: "number", message: "请输入有效的数字", trigger: "blur" }
+    ],
+    likes: [
+      { type: "number", message: "请输入有效的数字", trigger: "blur" }
+    ],
+    collections: [
+      { type: "number", message: "请输入有效的数字", trigger: "blur" }
+    ],
+    comments: [
+      { type: "number", message: "请输入有效的数字", trigger: "blur" }
+    ]
+  });
+
+
 
 // API setup
 const api = axios.create({ baseURL: "http://localhost:3000/api" });
@@ -538,36 +626,78 @@ const api = axios.create({ baseURL: "http://localhost:3000/api" });
 
 // Load initial data and cookie
 onMounted(() => {
-  const savedCookie = localStorage.getItem("xhs_cookie");
-  if (savedCookie) cookie.value = savedCookie;
+  console.log('组件已挂载，准备获取达人列表');
   fetchDarens();
   fetchPeriods();
 });
 
 // Watch for cookie changes to save them
 watch(cookie, (newCookie) => {
-  if (newCookie) {
-    localStorage.setItem("xhs_cookie", newCookie);
-    ElMessage({
-      message: "Cookie 已自动保存至浏览器",
-      type: "success",
-      duration: 2000,
-    });
-  }
-});
+    setCookie(newCookie);
+  });
 
 // Fetch all darens from backend
-const fetchDarens = async () => {
+// Pagination handlers
+  const handleSizeChange = (val: number) => {
+    pageSize.value = val;
+    currentPage.value = 1;
+    fetchDarens();
+  };
+
+  const handleCurrentChange = (val: number) => {
+    currentPage.value = val;
+    fetchDarens();
+  };
+
+  // 排序状态管理
+  const sortField = ref<string | null>(null);
+  const sortOrder = ref<'ascending' | 'descending' | null>(null);
+
+  const handleSortChange = (column: any) => {
+    sortField.value = column.prop;
+    sortOrder.value = column.order;
+    fetchDarens();
+  };
+
+  const fetchDarens = async () => {
   loading.value = true;
   try {
     const params = new URLSearchParams();
+    // 调试分页参数
+    console.log('分页参数:', currentPage.value, pageSize.value);
+    params.append('page', currentPage.value.toString());
+    params.append('limit', pageSize.value.toString());
+    if (sortField.value && sortOrder.value) {
+      params.append('sortBy', sortField.value);
+      params.append('sortOrder', sortOrder.value === 'ascending' ? 'asc' : 'desc');
+    }
     if (periodFilter.value) {
       params.append("period", periodFilter.value);
     }
+    console.log('Fetching darens with parameters:', params.toString());
     const { data } = await api.get("/darens", { params });
-    darenList.value = data;
-  } catch (error) {
-    ElMessage.error("获取达人列表失败");
+    darenList.value = data.items || [];
+      total.value = data.total || 0;
+      console.log('获取达人列表成功:', (data.items || []).length, '条记录');
+      } catch (error) {
+    // 详细错误信息处理
+      if (error.response) {
+        // 服务器返回错误响应
+        const status = error.response.status;
+        const statusText = error.response.statusText;
+        const data = error.response.data;
+        const errorMsg = data?.message || `服务器错误: ${status} ${statusText}`;
+        ElMessage.error(`获取达人列表失败: ${errorMsg}`);
+        console.error('API错误详情:', error.response);
+      } else if (error.request) {
+        // 请求已发送但无响应
+        ElMessage.error('获取达人列表失败: 服务器无响应，请检查后端服务是否运行');
+        console.error('网络错误详情:', error.request);
+      } else {
+        // 请求配置错误
+        ElMessage.error(`获取达人列表失败: ${error.message}`);
+        console.error('请求错误详情:', error.message);
+      }
   } finally {
     loading.value = false;
   }
@@ -600,14 +730,17 @@ const handleCancelEdit = () => {
 };
 
 const handleSave = async (row: any) => {
-  try {
+    saving.value = true;
+    try {
     await api.put(`/darens/${row._id}`, editForm.value);
     ElMessage.success("更新成功");
     editingId.value = null;
     fetchDarens(); // Refresh data
   } catch (error) {
-    ElMessage.error("更新失败");
-  }
+      ElMessage.error("更新失败");
+    } finally {
+      saving.value = false;
+    }
 };
 
 // --- Add New Daren Logic ---
@@ -620,7 +753,24 @@ const resetAddForm = () => {
   addForm.value = getEmptyForm();
 };
 
-const parsePageInfo = async (parseType: string = "auto") => {
+// 自动解析延迟计时器
+  const parseTimer = ref<NodeJS.Timeout | null>(null);
+
+  // 处理主页链接输入变化
+  const handleHomePageInput = (val: string) => {
+    // 清除之前的计时器
+    if (parseTimer.value) clearTimeout(parseTimer.value);
+
+    // 验证URL格式
+    if (val && val.includes("/user/profile/")) {
+      // 延迟500ms解析，避免频繁触发
+      parseTimer.value = setTimeout(() => {
+        parsePageInfo();
+      }, 500);
+    }
+  };
+
+  const parsePageInfo = async (parseType: string = "auto") => {
   if (!addForm.value.homePage) {
     ElMessage.warning("请先粘贴用户主页链接");
     return;
@@ -664,12 +814,12 @@ const parsePageInfo = async (parseType: string = "auto") => {
 
       ElMessage.success("用户主页解析成功！");
     } else {
-      ElMessage.error("解析失败：" + (data.message || "无法获取用户信息"));
+      ElMessage.error(`解析失败：${data.message || '无法获取用户信息'}`);
     }
   } catch (error: any) {
     const message =
       error.response?.data?.message || "解析失败，请检查链接或Cookie";
-    ElMessage.error(message);
+    ElMessage.error(`解析用户信息失败：${message}`);
   } finally {
     parsing.value = false;
   }
@@ -717,20 +867,38 @@ const handleMainPublishLinkChange = async () => {
 };
 
 const handleAddNew = async () => {
-  if (!addFormRef.value) return;
-  await addFormRef.value.validate(async (valid) => {
-    if (valid) {
-      try {
-        await api.post("/darens", addForm.value);
-        ElMessage.success("添加成功");
-        addDialogVisible.value = false;
-        fetchDarens();
-      } catch (error) {
-        ElMessage.error("操作失败");
+    if (!addFormRef.value) return;
+    await addFormRef.value.validate(async (valid, invalidFields) => {
+      if (valid) submitting.value = true;
+      if (valid) {
+        try {
+            await api.post("/darens", addForm.value);
+            ElMessage.success("添加成功");
+            addDialogVisible.value = false;
+            fetchDarens();
+          } catch (error: any) {
+            const message = error.response?.data?.message || "操作失败，请重试";
+            ElMessage.error(message);
+          } finally {
+            submitting.value = false;
+          }
+      } else {
+        // 自动滚动到第一个错误字段
+        const firstErrorField = Object.keys(invalidFields)[0];
+        if (firstErrorField) {
+          const errorEl = document.querySelector(`[prop="${firstErrorField}"]`);
+          if (errorEl) {
+            errorEl.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+            // 聚焦到第一个错误输入框
+            (errorEl.querySelector('input, select') as HTMLElement)?.focus();
+          }
+        }
       }
-    }
-  });
-};
+    });
+  };
 
 // --- Update Functions ---
 
@@ -856,4 +1024,71 @@ const handleDelete = async (id: string) => {
 .el-table .el-input-number .el-input__inner {
   text-align: left;
 }
-</style> 
+
+/* Pagination styles */
+.table-pagination {
+  padding: 10px 0;
+}
+
+/* Form optimization */
+.el-form-item {
+  margin-bottom: 16px;
+}
+
+/* Table cell padding */
+.el-table .cell {
+  padding: 12px 16px;
+}
+
+/* 表格行悬停效果 */
+.el-table__row:hover > td {
+  background-color: #f9fafc !important;
+}
+
+/* 表头样式优化 */
+.el-table__header th {
+  background-color: #f2f3f5 !important;
+  font-weight: 500;
+}
+
+/* Button spacing */
+.el-button + .el-button {
+  margin-left: 8px;
+}
+
+/* 链接格式提示样式 */
+.url-format-tip {
+  font-size: 12px;
+  color: #606266;
+  margin-top: 4px;
+}
+
+/* 编辑状态高亮 */
+.edit-row {
+  background-color: #e6f7ff !important;
+  border-left: 3px solid #1890ff;
+}
+
+.edit-row:hover > td {
+  background-color: #e6f7ff !important;
+}
+
+/* 操作按钮组优化 */
+.operation-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* 表单标签宽度统一 */
+.el-form-item__label {
+  width: 120px !important;
+}
+
+/* Cookie modal styles */
+.el-dialog__body .el-textarea__inner {
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+</style>

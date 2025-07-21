@@ -6,13 +6,20 @@ async function routes(fastify, options) {
   // Get all darens
   fastify.get('/api/darens', async (request, reply) => {
     try {
-      const { period } = request.query;
-      const query = {};
-      if (period) {
-        query.period = { $regex: period, $options: 'i' }; // Use regex for fuzzy search
-      }
-      const darens = await Daren.find(query);
-      reply.send(darens);
+      const { period, page = 1, limit = 10 } = request.query;
+    const query = {};
+    if (period) {
+      query.period = { $regex: period, $options: 'i' }; // Use regex for fuzzy search
+    }
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+    
+    const [darens, total] = await Promise.all([
+      Daren.find(query).skip(skip).limit(limitNum),
+      Daren.countDocuments(query)
+    ]);
+    reply.send({ items: darens, total });
     } catch (err) {
       reply.code(500).send(err);
     }
@@ -348,4 +355,4 @@ async function routes(fastify, options) {
   });
 }
 
-module.exports = routes; 
+module.exports = routes;

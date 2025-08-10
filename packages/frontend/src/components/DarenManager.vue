@@ -27,10 +27,13 @@
           />
           <el-select
             v-model="periodFilter"
-            placeholder="选择期数"
+            placeholder="选择或创建期数"
             clearable
-            style="width: 150px; margin-left: 10px"
-            @change="fetchDarens"
+            filterable
+            allow-create
+            default-first-option
+            style="width: 180px; margin-left: 10px"
+            @change="handlePeriodChange"
           >
             <el-option
               v-for="period in periodOptions"
@@ -66,11 +69,46 @@
             </el-radio-button>
           </el-radio-group>
           
+          <!-- 功能菜单下拉 -->
+          <el-dropdown trigger="click" @command="handleToolCommand">
+            <el-button type="primary">
+              功能工具<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="analytics" :icon="TrendCharts">
+                  数据分析
+                </el-dropdown-item>
+                <el-dropdown-item command="advanced-search" :icon="Search">
+                  高级搜索
+                </el-dropdown-item>
+                <el-dropdown-item command="batch-ops" :icon="Grid">
+                  批量操作
+                </el-dropdown-item>
+                <el-dropdown-item command="quick-actions" :icon="Setting">
+                  快捷操作
+                </el-dropdown-item>
+                <el-dropdown-item command="performance" :icon="TrendCharts">
+                  性能监控
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          
+          <!-- Notification System -->
+          <NotificationSystem ref="notificationRef" />
+          
           <el-button type="info" @click="showCookieModal = true" :icon="Setting">
             Cookie管理
           </el-button>
           <el-button @click="showColumnSettings = true" :icon="Grid">
             列设置
+            <el-badge 
+              v-if="getColumnStats.hidden > 0" 
+              :value="getColumnStats.hidden" 
+              :max="99"
+              class="column-badge"
+            />
           </el-button>
           <el-button @click="refreshData" :icon="Refresh" :loading="loading">
             刷新
@@ -78,39 +116,39 @@
         </div>
       </div>
 
-      <!-- Quick Stats -->
-      <div class="quick-stats">
-        <el-card class="stats-card">
-          <div class="stat-item">
-            <span class="stat-label">总计</span>
-            <span class="stat-value">{{ total }}</span>
-          </div>
-        </el-card>
-        <el-card class="stats-card">
-          <div class="stat-item">
-            <span class="stat-label">已建联</span>
-            <span class="stat-value stat-success">{{ getStatusCount('hasConnection') }}</span>
-          </div>
-        </el-card>
-        <el-card class="stats-card">
-          <div class="stat-item">
-            <span class="stat-label">已发布</span>
-            <span class="stat-value stat-primary">{{ getStatusCount('published') }}</span>
-          </div>
-        </el-card>
-        <el-card class="stats-card">
-          <div class="stat-item">
-            <span class="stat-label">待跟进</span>
-            <span class="stat-value stat-warning">{{ getPendingCount() }}</span>
-          </div>
-        </el-card>
-        <el-card class="stats-card highlight-card">
-          <div class="stat-item">
-            <span class="stat-label">总费用</span>
-            <span class="stat-value stat-price">¥{{ formatNumber(getTotalFee()) }}</span>
-          </div>
-        </el-card>
+      <!-- 紧凑的快速统计 -->
+      <div class="compact-stats" v-if="!hideStats">
+        <el-row :gutter="10" style="margin-bottom: 15px;">
+          <el-col :span="4">
+            <el-statistic title="总计" :value="total" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="已建联" :value="getStatusCount('hasConnection')" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="已发布" :value="getStatusCount('published')" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="待跟进" :value="getPendingCount()" />
+          </el-col>
+          <el-col :span="4">
+            <el-statistic title="总费用" :value="getTotalFee()" prefix="¥" />
+          </el-col>
+          <el-col :span="4">
+            <el-button size="small" text @click="hideStats = true">
+              <el-icon><ArrowUp /></el-icon>
+            </el-button>
+          </el-col>
+        </el-row>
       </div>
+      
+      <!-- 显示统计按钮 -->
+      <div v-else style="text-align: center; margin-bottom: 10px;">
+        <el-button size="small" text @click="hideStats = false">
+          <el-icon><ArrowDown /></el-icon> 显示统计
+        </el-button>
+      </div>
+
 
       <!-- 看人模式 - 表格视图 -->
       <el-table
@@ -124,7 +162,11 @@
         :row-key="'_id'"
         :row-class-name="({ row }) => editingId === row._id ? 'edit-row' : ''"
         @sort-change="handleSortChange"
+        @selection-change="handleSelectionChange"
       >
+        <!-- Selection Column -->
+        <el-table-column type="selection" width="55" fixed />
+      
         <!-- 原有的表格列内容 -->
         <!-- Operations Column (Fixed) -->
         <el-table-column label="操作" width="200" fixed="right" align="center">
@@ -198,11 +240,12 @@
           </template>
         </el-table-column>
 
-        <!-- Grouped Columns -->
+        <!-- Grouped Columns with Visibility Control -->
         <el-table-column
-          v-for="group in personModeColumns"
+          v-for="group in filteredPersonModeColumns"
           :key="group.label"
           :label="group.label"
+          v-show="group.children.length > 0"
         >
           <el-table-column
             v-for="column in group.children"
@@ -210,13 +253,16 @@
             :prop="column.prop"
             :label="column.label"
             :min-width="column.width || 150"
+            v-show="visibleColumns[column.prop]"
           >
             <template #default="scope">
               <TableColumnRenderer 
                 :column="column" 
                 :row="scope.row" 
                 :is-editing="editingId === scope.row._id" 
+                :period-options="periodOptions"
                 v-model="editForm"
+                @period-created="handleTablePeriodCreated"
               />
             </template>
           </el-table-column>
@@ -453,11 +499,12 @@
               <el-form-item label="期数" prop="period">
                 <el-select
                   v-model="addForm.period"
-                  placeholder="选择或输入期数"
+                  placeholder="选择或创建期数"
                   filterable
                   allow-create
                   default-first-option
                   style="width: 100%"
+                  @change="handleAddFormPeriodChange"
                 >
                   <el-option
                     v-for="item in periodOptions"
@@ -609,29 +656,187 @@
     <!-- Column Settings Dialog -->
     <el-dialog
       v-model="showColumnSettings"
-      title="列设置"
-      width="50%"
+      title="列设置管理"
+      width="60%"
+      class="column-settings-dialog"
     >
       <div class="column-settings">
-        <p class="settings-description">选择要显示的列</p>
-        <el-divider />
-        
-        <div v-for="group in columnGroups" :key="group.label" class="column-group">
-          <h3 class="group-title">{{ group.label }}</h3>
-          <div class="column-checkboxes">
-            <el-checkbox 
-              v-for="column in group.children" 
-              :key="column.prop"
-              v-model="visibleColumns[column.prop]"
-              :label="column.label"
-            />
+        <!-- 设置说明和统计 -->
+        <div class="settings-header">
+          <div class="settings-description">
+            <el-icon><Grid /></el-icon>
+            <span>自定义表格显示列，设置将自动保存到本地</span>
+          </div>
+          <div class="settings-stats">
+            <el-tag type="info" size="small">
+              显示 {{ getColumnStats.visible }}/{{ getColumnStats.total }} 列
+            </el-tag>
+            <el-tag v-if="getColumnStats.hidden > 0" type="warning" size="small">
+              隐藏 {{ getColumnStats.hidden }} 列
+            </el-tag>
           </div>
         </div>
+
+        <!-- 快捷操作 -->
+        <div class="quick-actions">
+          <div class="action-group">
+            <span class="action-label">快捷选择：</span>
+            <el-button-group size="small">
+              <el-button @click="selectAllColumns" :icon="Check">全选</el-button>
+              <el-button @click="selectNoneColumns" :icon="Close">全不选</el-button>
+            </el-button-group>
+          </div>
+          
+          <el-divider direction="vertical" />
+          
+          <div class="action-group">
+            <span class="action-label">预设配置：</span>
+            <el-dropdown trigger="click" size="small">
+              <el-button size="small" type="primary">
+                应用预设<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item 
+                    v-for="preset in columnPresets" 
+                    :key="preset.name"
+                    @click="applyPreset(preset)"
+                  >
+                    <div class="preset-item">
+                      <div class="preset-name">{{ preset.name }}</div>
+                      <div class="preset-desc">{{ preset.description }}</div>
+                    </div>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+          
+          <el-divider direction="vertical" />
+          
+          <div class="action-group">
+            <span class="action-label">按分组：</span>
+            <el-dropdown trigger="click" size="small">
+              <el-button size="small">
+                显示<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item 
+                    v-for="group in columnGroups" 
+                    :key="group.label"
+                    @click="toggleGroupColumns(group.label, true)"
+                  >
+                    显示「{{ group.label }}」
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            
+            <el-dropdown trigger="click" size="small">
+              <el-button size="small">
+                隐藏<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item 
+                    v-for="group in columnGroups" 
+                    :key="group.label"
+                    @click="toggleGroupColumns(group.label, false)"
+                  >
+                    隐藏「{{ group.label }}」
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </div>
+
+        <el-divider />
+        
+        <!-- 列设置分组 -->
+        <div class="column-groups">
+          <div v-for="group in columnGroups" :key="group.label" class="column-group">
+            <div class="group-header">
+              <h3 class="group-title">
+                <el-icon><Folder /></el-icon>
+                {{ group.label }}
+              </h3>
+              <div class="group-actions">
+                <el-button 
+                  size="small" 
+                  text 
+                  @click="toggleGroupColumns(group.label, true)"
+                >
+                  全部显示
+                </el-button>
+                <el-button 
+                  size="small" 
+                  text 
+                  @click="toggleGroupColumns(group.label, false)"
+                >
+                  全部隐藏
+                </el-button>
+              </div>
+            </div>
+            
+            <div class="column-checkboxes">
+              <el-checkbox 
+                v-for="column in group.children" 
+                :key="column.prop"
+                v-model="visibleColumns[column.prop]"
+                :label="column.label"
+                class="column-checkbox"
+              >
+                <template #default>
+                  <div class="checkbox-content">
+                    <span class="column-name">{{ column.label }}</span>
+                    <div class="column-info">
+                      <el-tag v-if="column.sortable" size="small" type="success">可排序</el-tag>
+                      <el-tag v-if="column.type" size="small" type="info">{{ column.type }}</el-tag>
+                      <span class="column-width">{{ column.width }}px</span>
+                    </div>
+                  </div>
+                </template>
+              </el-checkbox>
+            </div>
+          </div>
+        </div>
+
+        <!-- 预览信息 -->
+        <div class="settings-preview">
+          <el-alert
+            title="预览"
+            type="info"
+            :closable="false"
+            show-icon
+          >
+            <template #default>
+              <p>当前设置将显示 <strong>{{ getColumnStats.visible }}</strong> 列，隐藏 <strong>{{ getColumnStats.hidden }}</strong> 列</p>
+              <p class="preview-tip">💡 提示：设置会自动保存到浏览器本地存储，下次打开时会自动应用</p>
+              <details class="debug-info" v-if="false">
+                <summary>调试信息</summary>
+                <pre>{{ JSON.stringify(visibleColumns, null, 2) }}</pre>
+              </details>
+            </template>
+          </el-alert>
+        </div>
       </div>
+      
       <template #footer>
-        <el-button @click="showColumnSettings = false">取消</el-button>
-        <el-button type="primary" @click="applyColumnSettings">应用</el-button>
-        <el-button @click="resetColumnSettings">重置为默认</el-button>
+        <div class="dialog-footer">
+          <div class="footer-left">
+            <el-button @click="resetColumnSettings" :icon="RefreshLeft">
+              重置为默认
+            </el-button>
+          </div>
+          <div class="footer-right">
+            <el-button @click="showColumnSettings = false">取消</el-button>
+            <el-button type="primary" @click="applyColumnSettings" :icon="Check">
+              应用设置
+            </el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
     
@@ -678,12 +883,13 @@
               <template v-if="isDetailEditing">
                 <el-select
                   v-model="detailEditForm.period"
-                  placeholder="选择或输入期数"
+                  placeholder="选择或创建期数"
                   filterable
                   allow-create
                   default-first-option
                   size="small"
                   style="width: 100%"
+                  @change="handleDetailFormPeriodChange"
                 >
                   <el-option
                     v-for="item in periodOptions"
@@ -1086,18 +1292,90 @@
       </el-form>
     </el-dialog>
 
-  </el-main>
-</el-container>
+    </el-main>
+  </el-container>
+
+  <!-- 功能组件弹窗 -->
+  
+  <!-- Analytics Dashboard Dialog -->
+  <el-dialog
+    v-model="showAnalyticsDialog"
+    title="数据分析面板"
+    width="90%"
+    top="5vh"
+    :close-on-click-modal="false"
+  >
+    <AnalyticsDashboard />
+  </el-dialog>
+
+  <!-- Advanced Search Dialog -->
+  <el-dialog
+    v-model="showAdvancedSearchDialog"
+    title="高级搜索"
+    width="80%"
+    top="5vh"
+    :close-on-click-modal="false"
+  >
+    <AdvancedSearch 
+      ref="advancedSearchRef"
+      :period-options="periodOptions"
+      :ip-location-options="ipLocationOptions"
+      @search="handleAdvancedSearch"
+    />
+  </el-dialog>
+
+  <!-- Batch Operations Dialog -->
+  <el-dialog
+    v-model="showBatchOpsDialog"
+    title="批量操作"
+    width="70%"
+    top="5vh"
+    :close-on-click-modal="false"
+  >
+    <BatchOperations 
+      :selected-ids="selectedIds"
+      :period-options="periodOptions"
+      @refresh="refreshData"
+      @clear-selection="clearSelection"
+    />
+  </el-dialog>
+
+  <!-- Quick Actions Dialog -->
+  <el-dialog
+    v-model="showQuickActionsDialog"
+    title="快捷操作"
+    width="70%"
+    top="5vh"
+    :close-on-click-modal="false"
+  >
+    <QuickActions 
+      :period-options="periodOptions"
+      @refresh="refreshData"
+      @notify="handleQuickActionNotify"
+    />
+  </el-dialog>
+
+  <!-- Performance Monitor Dialog -->
+  <el-dialog
+    v-model="showPerformanceDialog"
+    title="性能监控"
+    width="85%"
+    top="5vh"
+    :close-on-click-modal="false"
+  >
+    <PerformanceMonitor ref="performanceRef" />
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch, computed } from 'vue';
-import axios from 'axios';
+import { ref, onMounted, onUnmounted, reactive, watch, computed, nextTick } from 'vue';
+import { api } from '../utils/api-simple';
 
 import { ElMessage, ElMessageBox } from "element-plus";
 import { getCookie, setCookie } from '@/utils/cookieManager';
 import { 
   ArrowDown, 
+  ArrowUp,
   Plus, 
   Upload, 
   Download, 
@@ -1108,9 +1386,20 @@ import {
   View,
   Link,
   User,
-  Document
+  Document,
+  TrendCharts,
+  Check,
+  Close,
+  Folder,
+  RefreshLeft
 } from "@element-plus/icons-vue";
 import TableColumnRenderer from './TableColumnRenderer.vue';
+import AnalyticsDashboard from './AnalyticsDashboard.vue';
+import BatchOperations from './BatchOperations.vue';
+import AdvancedSearch from './AdvancedSearch.vue';
+import NotificationSystem from './NotificationSystem.vue';
+import PerformanceMonitor from './PerformanceMonitor.vue';
+import QuickActions from './QuickActions.vue';
 
 import type { FormInstance, FormRules } from "element-plus";
 
@@ -1131,6 +1420,14 @@ const viewMode = ref('person'); // 'person' 或 'work'
 
 // 为不同视图模式定义不同的列配置
 const personModeColumns = computed(() => columnGroups);
+
+// 根据可见性设置过滤列
+const filteredPersonModeColumns = computed(() => {
+  return columnGroups.map(group => ({
+    ...group,
+    children: group.children.filter(column => visibleColumns.value[column.prop])
+  })).filter(group => group.children.length > 0);
+});
 
 // 视图模式切换处理函数
 const handleViewModeChange = (mode: string) => {
@@ -1167,6 +1464,15 @@ const parsing = ref(false);
 const periodFilter = ref("");
 const periodOptions = ref<string[]>([]);
 
+// 默认期数管理
+const DEFAULT_PERIOD_KEY = 'default_period';
+const getDefaultPeriod = (): string => {
+  return localStorage.getItem(DEFAULT_PERIOD_KEY) || '';
+};
+const setDefaultPeriod = (period: string): void => {
+  localStorage.setItem(DEFAULT_PERIOD_KEY, period);
+};
+
 // Refs for in-table editing
 const editingId = ref<string | null>(null);
   const editForm = ref<any>({});
@@ -1178,29 +1484,37 @@ const editingId = ref<string | null>(null);
 const addFormRef = ref<FormInstance>();
 const cookie = ref(getCookie());
 
+// New feature refs
+const showAnalytics = ref(false);
+const selectedIds = ref<string[]>([]);
+const advancedSearchRef = ref();
+const ipLocationOptions = ref<string[]>([]);
+const currentSearchFilters = ref({});
+const notificationRef = ref();
+const performanceRef = ref();
+const showPerformanceMonitor = ref(false);
+
+// Dialog states for feature components
+const showAnalyticsDialog = ref(false);
+const showAdvancedSearchDialog = ref(false);
+const showBatchOpsDialog = ref(false);
+const showQuickActionsDialog = ref(false);
+const showPerformanceDialog = ref(false);
+const hideStats = ref(false);
+
   // Table column definitions with grouping
 // 添加排序功能的列定义
 const columnGroups = [
-  { label: '基本信息', children: [
-    { prop: 'platform', label: '平台', width: 100, sortable: true },
-    { prop: 'period', label: '期数', width: 100, sortable: true },
-    { prop: 'fee', label: '费用', type: 'number', width: 120, sortable: true, formatter: (row: any) => `¥${formatNumber(row.fee)}` },
-    { prop: 'followers', label: '粉丝数', width: 120, sortable: true },
-    { prop: 'xiaohongshuId', label: '小红书ID', width: 150 },
-    { prop: 'ipLocation', label: 'IP属地', width: 120 },
-    { prop: 'likesAndCollections', label: '获赞与收藏', width: 120, sortable: true },
-    { prop: 'accountType', label: '账号类型', width: 120 }
-  ]},
   {
     label: "基本信息",
     children: [
-      { prop: "platform", label: "平台", width: 100 },
-      { prop: "period", label: "期数", width: 100 },
-      { prop: "fee", label: "费用", type: "number", width: 120 },
-      { prop: "followers", label: "粉丝数", width: 120 },
+      { prop: "platform", label: "平台", width: 100, sortable: true },
+      { prop: "period", label: "期数", width: 100, sortable: true },
+      { prop: "fee", label: "费用", type: "number", width: 120, sortable: true, formatter: (row: any) => `¥${formatNumber(row.fee)}` },
+      { prop: "followers", label: "粉丝数", width: 120, sortable: true },
       { prop: "xiaohongshuId", label: "小红书ID", width: 150 },
       { prop: "ipLocation", label: "IP属地", width: 120 },
-      { prop: "likesAndCollections", label: "获赞与收藏", width: 120 },
+      { prop: "likesAndCollections", label: "获赞与收藏", width: 120, sortable: true },
       { prop: "accountType", label: "账号类型", width: 120 },
     ],
   },
@@ -1371,7 +1685,7 @@ const getEmptyForm = () => ({
   collections: 0,
   forwards: 0,
   cooperationMethod: "",
-  period: "",
+  period: getDefaultPeriod(), // 默认使用当前选择的期数
   fee: 0,
   xiaohongshuId: "",
   ipLocation: "",
@@ -1396,16 +1710,116 @@ const rules = reactive<FormRules>({
 
 
 
-// API setup
-const api = axios.create({ baseURL: "http://localhost:3000/api" });
+// API is imported from api-simple module
 
 // --- Component Logic ---
+
+// New enhanced methods
+const handleAdvancedSearch = (filters: any) => {
+  currentSearchFilters.value = filters;
+  currentPage.value = 1; // Reset to first page
+  fetchDarensWithFilters(filters);
+};
+
+const fetchDarensWithFilters = async (filters: any = {}) => {
+  loading.value = true;
+  try {
+    const params = new URLSearchParams();
+    params.append('page', currentPage.value.toString());
+    params.append('limit', pageSize.value.toString());
+    
+    // Add all filter parameters
+    Object.keys(filters).forEach(key => {
+      if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+        if (Array.isArray(filters[key])) {
+          filters[key].forEach(value => params.append(key, value));
+        } else {
+          params.append(key, filters[key].toString());
+        }
+      }
+    });
+    
+    const { data } = await api.get("/darens", { params });
+    darenList.value = data.items || [];
+    total.value = data.total || 0;
+    
+    // Update search stats
+    if (advancedSearchRef.value) {
+      advancedSearchRef.value.updateStats(data.items || []);
+    }
+  } catch (error) {
+    ElMessage.error('搜索失败');
+    console.error(error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const fetchIpLocations = async () => {
+  try {
+    const { data } = await api.get('/ip-locations');
+    ipLocationOptions.value = data;
+  } catch (error) {
+    console.error('获取IP属地选项失败:', error);
+  }
+};
+
+const handleSelectionChange = (selection: any[]) => {
+  selectedIds.value = selection.map(item => item._id);
+};
+
+const clearSelection = () => {
+  selectedIds.value = [];
+};
+
+const refreshData = () => {
+  if (Object.keys(currentSearchFilters.value).length > 0) {
+    fetchDarensWithFilters(currentSearchFilters.value);
+  } else {
+    fetchDarens();
+  }
+};
+
+const handleQuickActionNotify = (type: string, title: string, message: string) => {
+  if (notificationRef.value) {
+    notificationRef.value.notify[type](title, message);
+  }
+};
+
+// Handle tool command from dropdown
+const handleToolCommand = (command: string) => {
+  switch (command) {
+    case 'analytics':
+      showAnalyticsDialog.value = true;
+      break;
+    case 'advanced-search':
+      showAdvancedSearchDialog.value = true;
+      break;
+    case 'batch-ops':
+      showBatchOpsDialog.value = true;
+      break;
+    case 'quick-actions':
+      showQuickActionsDialog.value = true;
+      break;
+    case 'performance':
+      showPerformanceDialog.value = true;
+      break;
+  }
+};
 
 // Load initial data and cookie
 onMounted(() => {
   console.log('组件已挂载，准备获取达人列表');
+  
+  // Connect performance monitor to API
+  if (performanceRef.value) {
+    api.setPerformanceMonitor(performanceRef.value);
+  }
+  
+  fetchPeriods(); // 先获取期数列表，这样可以设置默认期数
+  fetchIpLocations(); // 获取IP属地选项
   fetchDarens();
-  fetchPeriods();
+  initColumnSettings(); // 初始化列设置
 });
 
 // Cookie management functions
@@ -1458,62 +1872,79 @@ watch(cookie, (newCookie) => {
   };
 
   const fetchDarens = async () => {
-  loading.value = true;
-  try {
-    const params = new URLSearchParams();
-    // 调试分页参数
-    console.log('分页参数:', currentPage.value, pageSize.value);
-    params.append('page', currentPage.value.toString());
-    params.append('limit', pageSize.value.toString());
-    if (sortField.value && sortOrder.value) {
-      params.append('sortBy', sortField.value);
-      params.append('sortOrder', sortOrder.value === 'ascending' ? 'asc' : 'desc');
-    }
-    if (periodFilter.value) {
-      params.append("period", periodFilter.value);
-    }
-    console.log('Fetching darens with parameters:', params.toString());
-    const { data } = await api.get("/darens", { params });
-    darenList.value = data.items || [];
-      total.value = data.total || 0;
-      console.log('获取达人列表成功:', (data.items || []).length, '条记录');
-      } catch (error) {
-    // 详细错误信息处理
-      if (error.response) {
-        // 服务器返回错误响应
-        const status = error.response.status;
-        const statusText = error.response.statusText;
-        const data = error.response.data;
-        const errorMsg = data?.message || `服务器错误: ${status} ${statusText}`;
-        ElMessage.error(`获取达人列表失败: ${errorMsg}`);
-        console.error('API错误详情:', error.response);
-      } else if (error.request) {
-        // 请求已发送但无响应
-        ElMessage.error('获取达人列表失败: 服务器无响应，请检查后端服务是否运行');
-        console.error('网络错误详情:', error.request);
-      } else {
-        // 请求配置错误
-        ElMessage.error(`获取达人列表失败: ${error.message}`);
-        console.error('请求错误详情:', error.message);
-      }
-  } finally {
-    loading.value = false;
-  }
-};
+    // Use the enhanced search method with basic filters
+    const basicFilters = {
+      period: periodFilter.value,
+      sortBy: sortField.value && sortOrder.value 
+        ? `${sortField.value}_${sortOrder.value === 'ascending' ? 'asc' : 'desc'}`
+        : 'createdAt_desc'
+    };
+    await fetchDarensWithFilters(basicFilters);
+  };
 
 // Fetch distinct periods for dropdown
 const fetchPeriods = async () => {
   try {
     const { data } = await api.get("/periods");
     periodOptions.value = data;
+    
+    // 如果有默认期数且在列表中，自动选择
+    const defaultPeriod = getDefaultPeriod();
+    if (defaultPeriod && data.includes(defaultPeriod) && !periodFilter.value) {
+      periodFilter.value = defaultPeriod;
+    }
   } catch (error) {
     ElMessage.error("获取期数列表失败");
   }
 };
 
+// 处理期数变化
+const handlePeriodChange = (value: string) => {
+  if (value && !periodOptions.value.includes(value)) {
+    // 新创建的期数，添加到选项列表
+    periodOptions.value.unshift(value);
+    ElMessage.success(`已创建新期数: ${value}`);
+  }
+  fetchDarens();
+  // 当选择期数时，设为默认期数
+  if (value) {
+    setDefaultPeriod(value);
+  }
+};
+
+// 处理添加表单中的期数变化
+const handleAddFormPeriodChange = (value: string) => {
+  if (value && !periodOptions.value.includes(value)) {
+    // 新创建的期数，添加到选项列表
+    periodOptions.value.unshift(value);
+    ElMessage.success(`已创建新期数: ${value}`);
+    // 同时更新过滤器和默认期数
+    periodFilter.value = value;
+    setDefaultPeriod(value);
+  }
+};
+
+// 处理详情表单中的期数变化
+const handleDetailFormPeriodChange = (value: string) => {
+  if (value && !periodOptions.value.includes(value)) {
+    // 新创建的期数，添加到选项列表
+    periodOptions.value.unshift(value);
+    ElMessage.success(`已创建新期数: ${value}`);
+  }
+};
+
+// 处理表格内编辑中的期数创建
+const handleTablePeriodCreated = (value: string) => {
+  if (value && !periodOptions.value.includes(value)) {
+    // 新创建的期数，添加到选项列表
+    periodOptions.value.unshift(value);
+    ElMessage.success(`已创建新期数: ${value}`);
+  }
+};
+
 // Watch for filter changes
 watch(periodFilter, (newValue) => {
-  fetchDarens();
+  // 这里不需要再调用fetchDarens，因为handlePeriodChange已经处理了
 });
 
 // --- In-Table Editing Logic ---
@@ -1806,13 +2237,6 @@ const handleDelete = async (id: string) => {
 
 // --- New Feature Implementations ---
 
-// Refresh data
-const refreshData = () => {
-  fetchDarens();
-  fetchPeriods();
-  ElMessage.success('数据已刷新');
-};
-
 // Search functionality
 const handleSearch = () => {
   // Reset to first page when searching
@@ -1820,43 +2244,211 @@ const handleSearch = () => {
   fetchDarens();
 };
 
-// Column visibility settings
+// Column visibility settings with enhanced local storage
+const COLUMN_SETTINGS_KEY = 'daren_manager_column_settings';
+const COLUMN_SETTINGS_VERSION = '1.0'; // 用于版本控制，防止旧设置冲突
+
 const initColumnSettings = () => {
   // Initialize all columns as visible by default
+  const defaultSettings: Record<string, boolean> = {};
   columnGroups.forEach(group => {
     group.children.forEach(column => {
+      defaultSettings[column.prop] = true;
       visibleColumns.value[column.prop] = true;
     });
   });
   
   // Try to load saved settings
-  const savedSettings = localStorage.getItem('column_settings');
-  if (savedSettings) {
-    try {
-      const parsed = JSON.parse(savedSettings);
-      visibleColumns.value = { ...visibleColumns.value, ...parsed };
-    } catch (e) {
-      console.error('Failed to parse saved column settings');
+  try {
+    const savedData = localStorage.getItem(COLUMN_SETTINGS_KEY);
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      
+      // 检查版本兼容性
+      if (parsed.version === COLUMN_SETTINGS_VERSION && parsed.settings) {
+        // 合并保存的设置，确保新增的列默认显示
+        Object.keys(defaultSettings).forEach(prop => {
+          if (parsed.settings.hasOwnProperty(prop)) {
+            visibleColumns.value[prop] = parsed.settings[prop];
+          } else {
+            visibleColumns.value[prop] = true; // 新列默认显示
+          }
+        });
+        
+        console.log('✅ 列设置已从本地存储加载');
+      } else {
+        console.log('⚠️ 列设置版本不兼容，使用默认设置');
+        saveColumnSettings(); // 保存当前默认设置
+      }
+    } else {
+      console.log('📝 首次使用，初始化列设置');
+      saveColumnSettings(); // 首次使用，保存默认设置
     }
+  } catch (error) {
+    console.error('❌ 加载列设置失败:', error);
+    ElMessage.warning('列设置加载失败，已恢复默认设置');
+    saveColumnSettings(); // 保存默认设置
+  }
+};
+
+const saveColumnSettings = () => {
+  try {
+    const settingsData = {
+      version: COLUMN_SETTINGS_VERSION,
+      settings: { ...visibleColumns.value },
+      timestamp: new Date().toISOString(),
+      columnCount: Object.keys(visibleColumns.value).length
+    };
+    
+    localStorage.setItem(COLUMN_SETTINGS_KEY, JSON.stringify(settingsData));
+    console.log('💾 列设置已保存到本地存储');
+    return true;
+  } catch (error) {
+    console.error('❌ 保存列设置失败:', error);
+    ElMessage.error('列设置保存失败，请检查浏览器存储空间');
+    return false;
   }
 };
 
 const applyColumnSettings = () => {
-  // Save settings to localStorage
-  localStorage.setItem('column_settings', JSON.stringify(visibleColumns.value));
-  showColumnSettings.value = false;
-  ElMessage.success('列设置已保存');
+  if (saveColumnSettings()) {
+    showColumnSettings.value = false;
+    
+    // 统计显示的列数
+    const visibleCount = Object.values(visibleColumns.value).filter(Boolean).length;
+    const totalCount = Object.keys(visibleColumns.value).length;
+    
+    ElMessage.success(`列设置已保存 (显示 ${visibleCount}/${totalCount} 列)`);
+    
+    // 通知父组件刷新表格
+    nextTick(() => {
+      // 触发表格重新渲染
+      console.log('🔄 表格列设置已更新');
+    });
+  }
 };
 
 const resetColumnSettings = () => {
-  // Reset all columns to visible
+  ElMessageBox.confirm(
+    '确定要重置所有列设置为默认状态吗？此操作将显示所有列。',
+    '重置列设置',
+    {
+      confirmButtonText: '确定重置',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    // Reset all columns to visible
+    columnGroups.forEach(group => {
+      group.children.forEach(column => {
+        visibleColumns.value[column.prop] = true;
+      });
+    });
+    
+    if (saveColumnSettings()) {
+      ElMessage.success('列设置已重置为默认状态');
+    }
+  }).catch(() => {
+    // 用户取消操作
+  });
+};
+
+// 批量操作列设置
+const toggleGroupColumns = (groupLabel: string, visible: boolean) => {
+  const group = columnGroups.find(g => g.label === groupLabel);
+  if (group) {
+    group.children.forEach(column => {
+      visibleColumns.value[column.prop] = visible;
+    });
+  }
+};
+
+const selectAllColumns = () => {
   columnGroups.forEach(group => {
     group.children.forEach(column => {
       visibleColumns.value[column.prop] = true;
     });
   });
-  ElMessage.info('已重置为默认设置');
 };
+
+const selectNoneColumns = () => {
+  columnGroups.forEach(group => {
+    group.children.forEach(column => {
+      visibleColumns.value[column.prop] = false;
+    });
+  });
+};
+
+// 获取列设置统计信息
+const getColumnStats = computed(() => {
+  const total = Object.keys(visibleColumns.value).length;
+  const visible = Object.values(visibleColumns.value).filter(Boolean).length;
+  const hidden = total - visible;
+  
+  return { total, visible, hidden };
+});
+
+// 预设配置
+const columnPresets = [
+  {
+    name: '基础视图',
+    description: '只显示最基本的信息',
+    columns: ['nickname', 'period', 'fee', 'hasConnection', 'arrivedAtStore', 'reviewed', 'published']
+  },
+  {
+    name: '完整视图',
+    description: '显示所有列',
+    columns: 'all'
+  },
+  {
+    name: '数据分析视图',
+    description: '专注于数据指标',
+    columns: ['nickname', 'period', 'fee', 'followers', 'likes', 'collections', 'comments', 'published']
+  },
+  {
+    name: '进度跟踪视图',
+    description: '专注于合作进度',
+    columns: ['nickname', 'period', 'contactPerson', 'hasConnection', 'arrivedAtStore', 'reviewed', 'published', 'storeArrivalTime']
+  }
+];
+
+const applyPreset = (preset: any) => {
+  if (preset.columns === 'all') {
+    selectAllColumns();
+  } else {
+    // 先全部隐藏
+    selectNoneColumns();
+    // 然后显示预设的列
+    preset.columns.forEach((prop: string) => {
+      if (visibleColumns.value.hasOwnProperty(prop)) {
+        visibleColumns.value[prop] = true;
+      }
+    });
+  }
+  
+  ElMessage.success(`已应用「${preset.name}」预设`);
+};
+
+// 监听列设置变化，自动保存
+watch(visibleColumns, () => {
+  // 防抖保存，避免频繁写入
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer);
+  }
+  autoSaveTimer = setTimeout(() => {
+    saveColumnSettings();
+  }, 1000);
+}, { deep: true });
+
+let autoSaveTimer: number | null = null;
+
+// 组件销毁时清理定时器
+onUnmounted(() => {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+});
 
 // Export data functionality
 const exportData = async () => {
@@ -2110,10 +2702,7 @@ const getTotalFee = (): number => {
   }, 0);
 };
 
-// Initialize column settings on mount
-onMounted(() => {
-  initColumnSettings();
-});
+
 </script>
 
 <style>
@@ -2879,6 +3468,203 @@ onMounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+  }
+}
+
+/* New component styles */
+.is-active {
+  background-color: #67C23A !important;
+  border-color: #67C23A !important;
+  color: white !important;
+}
+
+.analytics-dashboard {
+  margin-bottom: 20px;
+}
+
+.advanced-search {
+  margin-bottom: 20px;
+}
+
+.batch-operations {
+  margin-bottom: 20px;
+}
+
+/* Column Settings Dialog Styles */
+.column-settings-dialog {
+  .el-dialog__body {
+    padding: 20px;
+  }
+}
+
+.column-settings {
+  .settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #409eff;
+  }
+
+  .settings-description {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #606266;
+  }
+
+  .settings-stats {
+    display: flex;
+    gap: 8px;
+  }
+
+  .quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 12px;
+    background: #fafafa;
+    border-radius: 6px;
+    flex-wrap: wrap;
+  }
+
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .action-label {
+    font-size: 13px;
+    color: #909399;
+    white-space: nowrap;
+  }
+
+  .preset-item {
+    padding: 4px 0;
+  }
+
+  .preset-name {
+    font-weight: 500;
+    color: #303133;
+    font-size: 14px;
+  }
+
+  .preset-desc {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 2px;
+  }
+
+  .column-groups {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+  }
+
+  .column-group {
+    border-bottom: 1px solid #f0f0f0;
+    
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #ebeef5;
+  }
+
+  .group-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #303133;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .group-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .column-checkboxes {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .column-checkbox {
+    .el-checkbox__label {
+      width: 100%;
+    }
+  }
+
+  .checkbox-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .column-name {
+    font-weight: 500;
+    color: #303133;
+  }
+
+  .column-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .column-width {
+    color: #909399;
+    font-size: 11px;
+  }
+
+  .settings-preview {
+    margin-top: 20px;
+    
+    .preview-tip {
+      margin: 8px 0 0 0;
+      font-size: 12px;
+      color: #909399;
+    }
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.footer-left, .footer-right {
+  display: flex;
+  gap: 10px;
+}
+
+/* Column settings badge */
+.column-badge {
+  .el-badge__content {
+    background-color: #f56c6c;
+    border-color: #f56c6c;
   }
 }
 

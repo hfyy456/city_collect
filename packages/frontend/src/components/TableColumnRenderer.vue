@@ -82,8 +82,25 @@
     <!-- Regular column handling -->
     <div v-else>
       <div v-if="isEditing">
+        <el-select
+          v-if="column.prop === 'period'"
+          v-model="modelValue[column.prop]"
+          placeholder="选择或创建期数"
+          filterable
+          allow-create
+          default-first-option
+          style="width: 100%"
+          @change="handlePeriodChange"
+        >
+          <el-option
+            v-for="period in periodOptions"
+            :key="period"
+            :label="period"
+            :value="period"
+          />
+        </el-select>
         <el-input
-          v-if="isMetricField(column.prop)"
+          v-else-if="isMetricField(column.prop)"
           v-model="modelValue[column.prop]"
           placeholder="如: 1.2k, 10万+"
           style="width: 100%"
@@ -151,10 +168,22 @@ const props = defineProps({
   modelValue: {
     type: Object,
     required: true
+  },
+  periodOptions: {
+    type: Array,
+    default: () => []
   }
 });
 
-defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'period-created']);
+
+// 处理期数变化
+const handlePeriodChange = (value: string) => {
+  if (value && !props.periodOptions.includes(value)) {
+    // 通知父组件创建了新期数
+    emit('period-created', value);
+  }
+};
 
 // Helper functions
 const isUrl = (prop: string) => ["mainPublishLink", "syncPublishLink"].includes(prop);

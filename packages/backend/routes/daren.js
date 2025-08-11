@@ -12,11 +12,6 @@ async function routes(fastify, options) {
         limit = 10,
         nickname,
         periods,
-        contactPerson,
-        hasConnection,
-        arrivedAtStore,
-        reviewed,
-        published,
         feeMin,
         feeMax,
         likesMin,
@@ -45,25 +40,7 @@ async function routes(fastify, options) {
         query.period = { $in: periodArray };
       }
       
-      if (contactPerson) {
-        query.contactPerson = { $regex: contactPerson, $options: 'i' };
-      }
-      
-      if (hasConnection !== undefined && hasConnection !== null) {
-        query.hasConnection = hasConnection === 'true';
-      }
-      
-      if (arrivedAtStore !== undefined && arrivedAtStore !== null) {
-        query.arrivedAtStore = arrivedAtStore === 'true';
-      }
-      
-      if (reviewed !== undefined && reviewed !== null) {
-        query.reviewed = reviewed === 'true';
-      }
-      
-      if (published !== undefined && published !== null) {
-        query.published = published === 'true';
-      }
+
       
       // Numeric range filters
       if (feeMin !== undefined || feeMax !== undefined) {
@@ -291,32 +268,7 @@ async function routes(fastify, options) {
         sum + (d.likes || 0) + (d.comments || 0) + (d.collections || 0), 0);
 
       // Progress distribution
-      const progressData = [
-        {
-          label: '已建联',
-          count: darens.filter(d => d.hasConnection).length,
-          percentage: 0,
-          color: '#67C23A'
-        },
-        {
-          label: '已到店',
-          count: darens.filter(d => d.arrivedAtStore).length,
-          percentage: 0,
-          color: '#E6A23C'
-        },
-        {
-          label: '已审稿',
-          count: darens.filter(d => d.reviewed).length,
-          percentage: 0,
-          color: '#409EFF'
-        },
-        {
-          label: '已发布',
-          count: darens.filter(d => d.published).length,
-          percentage: 0,
-          color: '#F56C6C'
-        }
-      ];
+      const progressData = [];
 
       // Calculate percentages
       progressData.forEach(item => {
@@ -337,24 +289,17 @@ async function routes(fastify, options) {
         }
         periodGroups[period].influencers.push(daren);
         periodGroups[period].totalFee += daren.fee || 0;
-        if (daren.published) {
-          periodGroups[period].completedCount++;
-        }
       });
 
       const periodComparison = Object.values(periodGroups).map(group => ({
         name: group.name,
         influencerCount: group.influencers.length,
-        totalFee: group.totalFee,
-        completionRate: group.influencers.length > 0 
-          ? Math.round((group.completedCount / group.influencers.length) * 100) 
-          : 0,
-        status: group.completedCount === group.influencers.length ? 'completed' : 'active'
+        totalFee: group.totalFee
       }));
 
       // Top performers
       const topPerformers = darens
-        .filter(d => d.published && (d.likes || d.comments || d.collections))
+        .filter(d => (d.likes || d.comments || d.collections))
         .map(d => {
           const totalEng = (d.likes || 0) + (d.comments || 0) + (d.collections || 0);
           const followers = parseFloat(d.followers?.replace(/[万k]/g, '')) || 1;
@@ -367,8 +312,7 @@ async function routes(fastify, options) {
             totalEngagement: totalEng,
             engagementRate: parseFloat(engagementRate),
             roi: parseFloat(roi),
-            fee: d.fee || 0,
-            published: d.published
+            fee: d.fee || 0
           };
         })
         .sort((a, b) => b.totalEngagement - a.totalEngagement)

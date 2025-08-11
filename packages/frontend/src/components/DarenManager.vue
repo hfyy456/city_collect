@@ -40,20 +40,64 @@
               :key="period"
               :label="period"
               :value="period"
-            />
+            >
+              <span>{{ period }}</span>
+              <el-tag 
+                v-if="period === getDefaultPeriod()" 
+                size="small" 
+                type="success" 
+                style="margin-left: 8px"
+              >
+                默认
+              </el-tag>
+            </el-option>
           </el-select>
-          <el-select
-            v-model="statusFilter"
-            placeholder="合作状态"
-            clearable
-            style="width: 150px; margin-left: 10px"
-            @change="fetchDarens"
+          
+          <!-- 默认期数管理按钮 -->
+          <el-dropdown trigger="click" style="margin-left: 5px">
+            <el-button size="small" type="info" text>
+              <el-icon><Setting /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item 
+                  v-if="periodFilter"
+                  @click="setAsDefaultPeriod"
+                  :icon="Star"
+                >
+                  设为默认期数
+                </el-dropdown-item>
+                <el-dropdown-item 
+                  v-if="getDefaultPeriod()"
+                  @click="clearDefaultPeriod"
+                  :icon="Delete"
+                >
+                  清除默认期数
+                </el-dropdown-item>
+                <el-dropdown-item 
+                  v-if="getDefaultPeriod()"
+                  @click="useDefaultPeriod"
+                  :icon="Refresh"
+                >
+                  使用默认期数 ({{ getDefaultPeriod() }})
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          
+          <!-- 默认期数提示 -->
+          <el-tooltip 
+            v-if="getDefaultPeriod() && periodFilter === getDefaultPeriod()" 
+            content="当前使用默认期数筛选" 
+            placement="top"
           >
-            <el-option label="已建联" value="hasConnection" />
-            <el-option label="已到店" value="arrivedAtStore" />
-            <el-option label="已审稿" value="reviewed" />
-            <el-option label="已发布" value="published" />
-          </el-select>
+            <el-tag size="small" type="success" style="margin-left: 5px">
+              <el-icon><Star /></el-icon>
+              默认
+            </el-tag>
+          </el-tooltip>
+          
+
         </div>
 
         <div class="toolbar-right">
@@ -122,12 +166,7 @@
           <el-col :span="4">
             <el-statistic title="总计" :value="total" />
           </el-col>
-          <el-col :span="4">
-            <el-statistic title="已建联" :value="getStatusCount('hasConnection')" />
-          </el-col>
-          <el-col :span="4">
-            <el-statistic title="已发布" :value="getStatusCount('published')" />
-          </el-col>
+
           <el-col :span="4">
             <el-statistic title="待跟进" :value="getPendingCount()" />
           </el-col>
@@ -284,20 +323,7 @@
                 <h3 class="work-title">{{ daren.nickname }}的作品</h3>
                 <div class="work-meta">
                   <el-tag size="small" type="info">{{ daren.period || '未设置期数' }}</el-tag>
-                  <el-tag 
-                    v-if="daren.published" 
-                    size="small" 
-                    type="success"
-                  >
-                    已发布
-                  </el-tag>
-                  <el-tag 
-                    v-else-if="daren.reviewed" 
-                    size="small" 
-                    type="warning"
-                  >
-                    已审稿
-                  </el-tag>
+
                 </div>
               </div>
               <div class="work-actions">
@@ -364,27 +390,7 @@
               </div>
             </div>
 
-            <!-- 作品状态进度条 -->
-            <div class="work-progress">
-              <div class="progress-steps">
-                <div class="step" :class="{ active: daren.hasConnection }">
-                  <div class="step-icon">📞</div>
-                  <span class="step-label">已建联</span>
-                </div>
-                <div class="step" :class="{ active: daren.arrivedAtStore }">
-                  <div class="step-icon">🏪</div>
-                  <span class="step-label">已到店</span>
-                </div>
-                <div class="step" :class="{ active: daren.reviewed }">
-                  <div class="step-icon">📝</div>
-                  <span class="step-label">已审稿</span>
-                </div>
-                <div class="step" :class="{ active: daren.published }">
-                  <div class="step-icon">🚀</div>
-                  <span class="step-label">已发布</span>
-                </div>
-              </div>
-            </div>
+
 
             <!-- 费用信息 -->
             <div class="work-footer">
@@ -942,13 +948,7 @@
               </template>
               <span v-else class="detail-value">{{ currentDaren.likesAndCollections || '-' }}</span>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">账号类型</span>
-              <template v-if="isDetailEditing">
-                <el-input v-model="detailEditForm.accountType" size="small" />
-              </template>
-              <span v-else class="detail-value">{{ currentDaren.accountType || '-' }}</span>
-            </div>
+
           </div>
         </el-card>
 
@@ -960,13 +960,7 @@
             </div>
           </template>
           <div class="detail-grid">
-            <div class="detail-item">
-              <span class="detail-label">对接人</span>
-              <template v-if="isDetailEditing">
-                <el-input v-model="detailEditForm.contactPerson" size="small" />
-              </template>
-              <span v-else class="detail-value">{{ currentDaren.contactPerson || '-' }}</span>
-            </div>
+
             <div class="detail-item">
               <span class="detail-label">联系方式</span>
               <template v-if="isDetailEditing">
@@ -1391,7 +1385,9 @@ import {
   Check,
   Close,
   Folder,
-  RefreshLeft
+  RefreshLeft,
+  Star,
+  Delete
 } from "@element-plus/icons-vue";
 import TableColumnRenderer from './TableColumnRenderer.vue';
 import AnalyticsDashboard from './AnalyticsDashboard.vue';
@@ -1515,20 +1511,13 @@ const columnGroups = [
       { prop: "xiaohongshuId", label: "小红书ID", width: 150 },
       { prop: "ipLocation", label: "IP属地", width: 120 },
       { prop: "likesAndCollections", label: "获赞与收藏", width: 120, sortable: true },
-      { prop: "accountType", label: "账号类型", width: 120 },
     ],
   },
   {
     label: "联系与进度",
     children: [
-      { prop: "contactPerson", label: "对接人", width: 120 },
       { prop: "contactInfo", label: "联系方式", width: 150 },
-      { prop: "hasConnection", label: "已建联", type: "switch", width: 90 },
-      { prop: "inGroup", label: "在群", type: "switch", width: 90 },
       { prop: "storeArrivalTime", label: "到店时间", type: "date", width: 120 },
-      { prop: "arrivedAtStore", label: "已到店", type: "switch", width: 90 },
-      { prop: "reviewed", label: "已审稿", type: "switch", width: 90 },
-      { prop: "published", label: "已发布", type: "switch", width: 90 },
     ],
   },
   {
@@ -1662,17 +1651,10 @@ const getEmptyForm = () => ({
   _id: null,
   nickname: "",
   platform: "小红书",
-  accountType: "",
   followers: "",
   homePage: "",
-  contactPerson: "",
-  hasConnection: false,
   contactInfo: "",
-  inGroup: false,
   storeArrivalTime: null,
-  arrivedAtStore: false,
-  reviewed: false,
-  published: false,
   mainPublishLink: "",
   syncPublishLink: "",
   remarks: "",
@@ -1808,7 +1790,7 @@ const handleToolCommand = (command: string) => {
 };
 
 // Load initial data and cookie
-onMounted(() => {
+onMounted(async () => {
   console.log('组件已挂载，准备获取达人列表');
   
   // Connect performance monitor to API
@@ -1816,9 +1798,10 @@ onMounted(() => {
     api.setPerformanceMonitor(performanceRef.value);
   }
   
-  fetchPeriods(); // 先获取期数列表，这样可以设置默认期数
+  // 先获取期数列表，设置默认期数，然后再获取数据
+  await fetchPeriods(); // 等待期数列表加载完成，这样可以设置默认期数
   fetchIpLocations(); // 获取IP属地选项
-  fetchDarens();
+  fetchDarens(); // 现在获取数据，会使用默认期数进行筛选
   initColumnSettings(); // 初始化列设置
 });
 
@@ -1939,6 +1922,36 @@ const handleTablePeriodCreated = (value: string) => {
     // 新创建的期数，添加到选项列表
     periodOptions.value.unshift(value);
     ElMessage.success(`已创建新期数: ${value}`);
+  }
+};
+
+// 默认期数管理函数
+const setAsDefaultPeriod = () => {
+  if (periodFilter.value) {
+    setDefaultPeriod(periodFilter.value);
+    ElMessage.success(`已将"${periodFilter.value}"设为默认期数`);
+  }
+};
+
+const clearDefaultPeriod = () => {
+  localStorage.removeItem(DEFAULT_PERIOD_KEY);
+  ElMessage.success('已清除默认期数设置');
+};
+
+const useDefaultPeriod = () => {
+  const defaultPeriod = getDefaultPeriod();
+  if (defaultPeriod) {
+    periodFilter.value = defaultPeriod;
+    fetchDarens();
+    ElMessage.success(`已切换到默认期数: ${defaultPeriod}`);
+  }
+};
+
+// 更新添加表单的默认期数
+const updateAddFormDefaultPeriod = () => {
+  if (!addDialogVisible.value) {
+    // 只在对话框关闭时更新，避免用户正在编辑时被覆盖
+    addForm.value.period = getDefaultPeriod();
   }
 };
 

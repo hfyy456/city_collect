@@ -24,7 +24,7 @@ import {
 import { darenApi, type Daren, type PeriodData } from '@/lib/api'
 import { normalizeNumber } from '@/lib/utils'
 import { SquarePen } from 'lucide-react'
-import { useToast } from '@/components/NotificationSystem'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface EditPeriodDataDialogProps {
   daren: Daren

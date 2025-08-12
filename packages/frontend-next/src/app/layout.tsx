@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import ErrorBoundary, { PageErrorFallback } from '@/components/ErrorBoundary'
-import { NotificationProvider, NotificationInitializer } from '@/components/NotificationSystem'
+import ErrorBoundary, { PageErrorFallback } from '@/components/shared/feedback/ErrorBoundary'
+import { NotificationProvider, NotificationInitializer } from '@/components/shared/feedback/NotificationSystem'
 
 const inter = Inter({ subsets: ['latin'] })
 

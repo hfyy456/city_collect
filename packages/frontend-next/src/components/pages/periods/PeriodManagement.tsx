@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { darenApi, type Daren, type PeriodData } from '@/lib/api'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, UserPlus } from 'lucide-react'
-import { AddDarenToPeriodDialog } from '@/components/AddDarenToPeriodDialog'
-import { EditPeriodDataDialog } from '@/components/EditPeriodDataDialog'
+import { AddDarenToPeriodDialog } from '@/components/features/daren/operations'
+import { EditPeriodDataDialog } from '@/components/features/periods/dialogs'
 
 export function PeriodManagement() {
   const [darens, setDarens] = useState<Daren[]>([])
@@ -365,6 +365,7 @@ export function PeriodManagement() {
                                 {periodData && (
                                   <EditPeriodDataDialog
                                     daren={daren}
+                                    period={selectedPeriod}
                                     periodData={periodData}
                                     onSuccess={() => loadDarens()}
                                   >
@@ -389,3 +390,5 @@ export function PeriodManagement() {
     </div>
   )
 }
+
+export default PeriodManagement

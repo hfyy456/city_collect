@@ -86,6 +86,10 @@ export const darenApi = {
   list: (params: SearchParams = {}): Promise<DarenListResponse> =>
     api.get('/darens', { params }).then(res => res.data),
 
+  // 搜索达人（分页版本）
+  search: (params: SearchParams = {}): Promise<DarenListResponse> =>
+    api.get('/darens', { params }).then(res => res.data),
+
   // 获取单个达人
   get: (id: string): Promise<Daren> =>
     api.get(`/darens/${id}`).then(res => res.data),

@@ -1,31 +1,53 @@
+/*
+ * @Author: Sirius 540363975@qq.com
+ * @Date: 2025-08-13 02:19:11
+ * @LastEditors: Sirius 540363975@qq.com
+ * @LastEditTime: 2025-08-13 03:02:15
+ */
 'use client'
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { DarenManagement } from '@/components/DarenManagement'
-import { PeriodManagement } from '@/components/PeriodManagement'
+import { useState } from 'react'
+import { AppLayout } from '@/components/shared/layout'
+import { DarenManagement } from '@/components/pages/daren'
+import { PeriodManagement } from '@/components/pages/periods'
 
 export default function HomePage() {
+  const [activeTab, setActiveTab] = useState('darens')
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'darens':
+        return <DarenManagement />
+      case 'periods':
+        return <PeriodManagement />
+      case 'analytics':
+        return (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">数据分析</h3>
+              <p className="text-gray-500">此功能正在开发中，敬请期待...</p>
+            </div>
+          </div>
+        )
+      case 'database':
+        return (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">数据库管理</h3>
+              <p className="text-gray-500">此功能正在开发中，敬请期待...</p>
+            </div>
+          </div>
+        )
+      default:
+        return <DarenManagement />
+    }
+  }
+
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">City Collect</h1>
-        <p className="text-muted-foreground">达人管理系统</p>
+    <AppLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      <div className="space-y-6">
+        {renderContent()}
       </div>
-      
-      <Tabs defaultValue="darens" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="darens">达人管理</TabsTrigger>
-          <TabsTrigger value="periods">期数管理</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="darens" className="space-y-6">
-          <DarenManagement />
-        </TabsContent>
-        
-        <TabsContent value="periods" className="space-y-6">
-          <PeriodManagement />
-        </TabsContent>
-      </Tabs>
-    </div>
+    </AppLayout>
   )
 }

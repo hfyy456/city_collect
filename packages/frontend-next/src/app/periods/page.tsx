@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { darenApi, type Daren, type PeriodData } from '@/lib/api'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, ArrowLeft, UserPlus } from 'lucide-react'
-import { AddDarenToPeriodDialog } from '@/components/AddDarenToPeriodDialog'
+import { AddDarenToPeriodDialog } from '@/components/features/daren/operations'
 
 export default function PeriodsPage() {
   const [periods, setPeriods] = useState<string[]>([])

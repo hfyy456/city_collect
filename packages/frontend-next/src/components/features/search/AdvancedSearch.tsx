@@ -30,7 +30,7 @@ import {
   Calendar
 } from 'lucide-react'
 import { darenApi, type SearchParams } from '@/lib/api'
-import { useToast } from '@/components/NotificationSystem'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface AdvancedSearchProps {
   onSearch: (params: SearchParams) => void

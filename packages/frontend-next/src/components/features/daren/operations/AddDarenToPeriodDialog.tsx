@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { darenApi, periodApi, type Daren } from '@/lib/api'
 import { formatNumber, normalizeNumber } from '@/lib/utils'
 import { Plus, Search, X } from 'lucide-react'
-import { useToast } from '@/components/NotificationSystem'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface AddDarenToPeriodDialogProps {
   period: string

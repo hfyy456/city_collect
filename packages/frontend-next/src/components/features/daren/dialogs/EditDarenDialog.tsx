@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { darenApi, type Daren } from '@/lib/api'
 import { normalizeNumber } from '@/lib/utils'
 import { SquarePen, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react'
-import { useToast } from '@/components/NotificationSystem'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface EditDarenDialogProps {
   daren: Daren

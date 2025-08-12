@@ -29,14 +29,12 @@ import {
   FileText, 
   Users, 
   MoreHorizontal,
-  CheckSquare,
-  Square,
   Loader2,
   Archive,
   Tag
 } from 'lucide-react'
 import { darenApi, type Daren } from '@/lib/api'
-import { useToast } from '@/components/NotificationSystem'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface BatchOperationsProps {
   selectedItems: string[]
@@ -56,16 +54,6 @@ export function BatchOperations({
   const [operation, setOperation] = useState<string | null>(null)
 
   const selectedData = allItems.filter(item => selectedItems.includes(item._id))
-  const isAllSelected = allItems.length > 0 && selectedItems.length === allItems.length
-  const isPartialSelected = selectedItems.length > 0 && selectedItems.length < allItems.length
-
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      onSelectionChange([])
-    } else {
-      onSelectionChange(allItems.map(item => item._id))
-    }
-  }
 
   const handleBatchDelete = async () => {
     if (selectedItems.length === 0) return
@@ -203,26 +191,6 @@ export function BatchOperations({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSelectAll}
-              className="flex items-center space-x-2"
-            >
-              {isAllSelected ? (
-                <CheckSquare className="w-4 h-4" />
-              ) : isPartialSelected ? (
-                <div className="w-4 h-4 border-2 border-primary bg-primary/20 rounded-sm flex items-center justify-center">
-                  <div className="w-2 h-2 bg-primary rounded-sm" />
-                </div>
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-              <span>
-                {isAllSelected ? '取消全选' : '全选'}
-              </span>
-            </Button>
-            
             {selectedItems.length > 0 && (
               <Badge variant="secondary" className="flex items-center space-x-1">
                 <Users className="w-3 h-3" />
@@ -231,9 +199,12 @@ export function BatchOperations({
             )}
           </div>
 
-          {selectedItems.length > 0 && (
-            <div className="flex items-center space-x-2">
-              {/* 导出菜单 */}
+          <div className="flex items-center space-x-2">
+
+            
+            {selectedItems.length > 0 && (
+              <>
+                {/* 导出菜单 */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
@@ -317,8 +288,9 @@ export function BatchOperations({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </CardHeader>
 

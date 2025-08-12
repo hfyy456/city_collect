@@ -1,31 +1,47 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { darenApi, type Daren } from '@/lib/api'
-import { CookieStorage, type SavedCookie } from '@/lib/cookieStorage'
+import { CookieStorage } from '@/lib/cookieStorage'
 import { normalizeDarenData } from '@/lib/utils'
-import { Plus, Link, Loader2, AlertCircle, CheckCircle, X, Save, History, Trash2, Star } from 'lucide-react'
-import { useToast } from '@/components/NotificationSystem'
+import { Plus, Link, Loader2, AlertCircle, CheckCircle, X, Cookie } from 'lucide-react'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 interface AddDarenDialogProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   onSuccess?: (daren: Daren) => void
 }
 
-export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
+export function AddDarenDialog({ open: externalOpen, onOpenChange, onSuccess }: AddDarenDialogProps) {
   const toast = useToast()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = externalOpen !== undefined ? externalOpen : internalOpen
+  const setOpen = onOpenChange || setInternalOpen
   const [loading, setLoading] = useState(false)
   const [parseLoading, setParseLoading] = useState(false)
-  const [showCookieInput, setShowCookieInput] = useState(false)
-  const [showCookieManager, setShowCookieManager] = useState(false)
+
+  // 防止滚动穿透
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [open])
+
   const [parseSuccess, setParseSuccess] = useState(false)
   const [parseError, setParseError] = useState('')
-  const [cookieHistory, setCookieHistory] = useState<SavedCookie[]>([])
-  const [newCookieName, setNewCookieName] = useState('')
+
   const [formData, setFormData] = useState({
     nickname: '',
     xiaohongshuId: '',
@@ -35,19 +51,11 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
     contactInfo: '',
     likesAndCollections: '',
     remarks: '',
-    xhsCookie: ''
+
   })
 
-  // 加载保存的Cookie
+  // 重置表单数据
   useEffect(() => {
-    const defaultCookie = CookieStorage.getDefaultCookie()
-    const history = CookieStorage.getCookieHistory()
-    
-    setCookieHistory(history)
-    
-    if (defaultCookie) {
-      setFormData(prev => ({ ...prev, xhsCookie: defaultCookie }))
-    }
   }, [open])
 
   const handleInputChange = (field: string, value: string) => {
@@ -60,56 +68,7 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
     }
   }
 
-  // Cookie管理功能
-  const handleSaveCookie = () => {
-    if (!formData.xhsCookie.trim()) {
-      toast.error('请先输入Cookie')
-      return
-    }
-    
-    if (!newCookieName.trim()) {
-      toast.error('请输入Cookie名称')
-      return
-    }
 
-    try {
-      CookieStorage.saveCookie(newCookieName.trim(), formData.xhsCookie.trim())
-      const updatedHistory = CookieStorage.getCookieHistory()
-      setCookieHistory(updatedHistory)
-      setNewCookieName('')
-      toast.success(`Cookie "${newCookieName}" 已保存`)
-    } catch (error) {
-      toast.error('保存Cookie失败')
-    }
-  }
-
-  const handleSelectCookie = (cookie: SavedCookie) => {
-    setFormData(prev => ({ ...prev, xhsCookie: cookie.cookie || '' }))
-    setShowCookieManager(false)
-    toast.success(`已选择Cookie: ${cookie.name}`)
-  }
-
-  const handleDeleteCookie = (cookieId: string) => {
-    try {
-      CookieStorage.deleteCookie(cookieId)
-      const updatedHistory = CookieStorage.getCookieHistory()
-      setCookieHistory(updatedHistory)
-      toast.success('Cookie已删除')
-    } catch (error) {
-      toast.error('删除Cookie失败')
-    }
-  }
-
-  const handleSetDefaultCookie = (cookieId: string) => {
-    try {
-      CookieStorage.setDefaultCookie(cookieId)
-      const updatedHistory = CookieStorage.getCookieHistory()
-      setCookieHistory(updatedHistory)
-      toast.success('已设置为默认Cookie')
-    } catch (error) {
-      toast.error('设置默认Cookie失败')
-    }
-  }
 
   const handleParseXhsUrl = async () => {
     if (!formData.homePage) return
@@ -119,7 +78,9 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
       setParseError('')
       setParseSuccess(false)
       
-      const result = await darenApi.parseXhsUser(formData.homePage, formData.xhsCookie)
+      // 使用导航栏中的默认Cookie
+      const defaultCookie = CookieStorage.getDefaultCookie()
+      const result = await darenApi.parseXhsUser(formData.homePage, defaultCookie)
       
       if (result.success) {
         setFormData(prev => ({
@@ -140,8 +101,8 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
           console.log('建议:', result.suggestions)
         }
         
-        if (result.cookieRequired && !formData.xhsCookie) {
-          setShowCookieInput(true)
+        if (result.cookieRequired && !defaultCookie) {
+          setParseError('需要Cookie才能获取完整数据，请在导航栏中设置Cookie')
         }
       }
     } catch (error: any) {
@@ -194,10 +155,8 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
         ipLocation: '',
         contactInfo: '',
         likesAndCollections: '',
-        remarks: '',
-        xhsCookie: ''
+        remarks: ''
       })
-      setShowCookieInput(false)
       setParseSuccess(false)
       setParseError('')
     } catch (error) {
@@ -209,12 +168,14 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
   }
 
   return (
-    <div>
-      <Button onClick={() => setOpen(!open)}>
-        <Plus className="w-4 h-4 mr-2" />
-        添加达人
-      </Button>
-      {open && (
+    <>
+      {externalOpen === undefined && (
+        <Button onClick={() => setOpen(!open)}>
+          <Plus className="w-4 h-4 mr-2" />
+          添加达人
+        </Button>
+      )}
+      {open && createPortal(
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Header */}
@@ -287,157 +248,15 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
                 
 
                 
-                {/* Cookie管理界面 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="xhsCookie">小红书Cookie</Label>
-                      {formData.xhsCookie.trim() ? (
-                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
-                          <CheckCircle className="w-3 h-3" />
-                          已填入
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-xs">
-                          <AlertCircle className="w-3 h-3" />
-                          未填入
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowCookieManager(!showCookieManager)}
-                      >
-                        <History className="w-4 h-4 mr-1" />
-                        Cookie管理
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowCookieInput(!showCookieInput)}
-                      >
-                        {showCookieInput ? '隐藏' : '显示'} Cookie输入
-                      </Button>
-                    </div>
+                {/* Cookie状态提示 */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-sm text-blue-700">
+                    <Cookie className="h-4 w-4" />
+                    <span>Cookie管理已移至导航栏，解析时将自动使用默认Cookie</span>
                   </div>
-                  
-                  {/* Cookie管理界面 */}
-                  {showCookieManager && (
-                    <div className="border rounded-lg p-4 space-y-3 bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-sm">Cookie历史记录</h4>
-                        <span className="text-xs text-gray-500">{cookieHistory.length}/5</span>
-                      </div>
-                      
-                      {cookieHistory.length > 0 ? (
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                          {cookieHistory.map((cookie) => (
-                            <div key={cookie.id} className="flex items-center justify-between p-2 bg-white rounded border">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium truncate">{cookie.name}</span>
-                                  {cookie.isDefault && (
-                                    <Star className="w-3 h-3 text-yellow-500 fill-current" />
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  保存于: {new Date(cookie.savedAt || cookie.createdAt).toLocaleString()}
-                                </div>
-                                <div className="text-xs text-gray-400 truncate">
-                                  {cookie.cookie ? cookie.cookie.substring(0, 50) + '...' : '无Cookie内容'}
-                                </div>
-                              </div>
-                              <div className="flex gap-1 ml-2">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleSelectCookie(cookie)}
-                                  className="h-8 px-2"
-                                >
-                                  选择
-                                </Button>
-                                {!cookie.isDefault && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleSetDefaultCookie(cookie.id)}
-                                    className="h-8 px-2"
-                                  >
-                                    <Star className="w-3 h-3" />
-                                  </Button>
-                                )}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteCookie(cookie.id)}
-                                  className="h-8 px-2 text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-gray-500 text-sm">
-                          暂无保存的Cookie
-                        </div>
-                      )}
-                      
-                      {/* 保存新Cookie */}
-                      <div className="border-t pt-3">
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Cookie名称"
-                            value={newCookieName}
-                            onChange={(e) => setNewCookieName(e.target.value)}
-                            className="flex-1"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSaveCookie}
-                            disabled={!formData.xhsCookie.trim() || !newCookieName.trim()}
-                          >
-                            <Save className="w-4 h-4 mr-1" />
-                            保存当前Cookie
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {showCookieInput && (
-                    <Textarea
-                      id="xhsCookie"
-                      placeholder="请输入小红书Cookie（用于解析用户信息）"
-                      value={formData.xhsCookie}
-                      onChange={(e) => handleInputChange('xhsCookie', e.target.value)}
-                      className="min-h-[100px] text-xs"
-                    />
-                  )}
-                  
-                  {/* 显示Cookie按钮 */}
-                  {!showCookieInput && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowCookieInput(true)}
-                      className="text-xs text-gray-500 hover:text-gray-700 h-auto p-1"
-                    >
-                      需要更完整的数据？添加Cookie
-                    </Button>
-                  )}
                 </div>
+
+
               </div>
 
               {/* 基本信息 */}
@@ -532,8 +351,9 @@ export function AddDarenDialog({ onSuccess }: AddDarenDialogProps) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }

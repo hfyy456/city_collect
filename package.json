@@ -3,8 +3,16 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently \"npm run start --prefix packages/backend\" \"npm run dev --prefix packages/frontend\""
+    "dev": "concurrently \"yarn workspace backend start\" \"yarn workspace frontend dev\"",
+    "dev:next": "concurrently \"yarn workspace backend start\" \"yarn workspace frontend-next dev\"",
+    "build:next": "yarn workspace frontend-next build",
+    "start:next": "concurrently \"yarn workspace backend start\" \"yarn workspace frontend-next start\"",
+    "install:all": "yarn install && yarn workspace backend install && yarn workspace frontend install && yarn workspace frontend-next install"
   },
   "keywords": [],
   "author": "",

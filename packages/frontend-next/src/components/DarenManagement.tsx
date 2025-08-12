@@ -43,6 +43,15 @@ import {
   Eye,
   RefreshCw
 } from 'lucide-react'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 import { darenApi, type Daren, type SearchParams } from '@/lib/api'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { CookieStorage } from '@/lib/cookieStorage'
@@ -69,8 +78,11 @@ export function DarenManagement() {
   const [deletingDaren, setDeletingDaren] = useState<Daren | null>(null)
   const [showCookieSelect, setShowCookieSelect] = useState(false)
   const [pendingUpdateDaren, setPendingUpdateDaren] = useState<Daren | null>(null)
-  const [searchParams, setSearchParams] = useState<SearchParams>({})
+  const [searchParams, setSearchParams] = useState<SearchParams>({ page: 1, limit: 10 })
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
   const [stats, setStats] = useState({
     totalInfluencers: 0,
     totalInvestment: 0,
@@ -84,6 +96,7 @@ export function DarenManagement() {
       setLoading(true)
       const response = await darenApi.list(searchParams)
       setDarens(response.items || [])
+      setTotal(response.total || 0)
       
       // 计算统计数据
       const dataArray = response.data || response.items || []
@@ -129,7 +142,8 @@ export function DarenManagement() {
   }, [searchParams])
 
   const handleSearch = (params: SearchParams) => {
-    setSearchParams(params)
+    setCurrentPage(1)
+    setSearchParams({ ...params, page: 1 })
   }
 
   const handleBatchDelete = async (ids: string[]) => {
@@ -207,6 +221,17 @@ export function DarenManagement() {
     // 这里可以打开一个添加cookie的对话框或者跳转到cookie管理页面
     // 暂时显示一个提示
     toast.info('请在添加达人页面中管理Cookie设置')
+  }
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    setSearchParams(prev => ({ ...prev, page }))
+  }
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+    setSearchParams(prev => ({ ...prev, page: 1, limit: size }))
   }
 
   // 删除达人
@@ -576,6 +601,180 @@ export function DarenManagement() {
             )}
           </div>
         </CardContent>
+        
+        {/* 分页 */}
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-muted-foreground">
+              共 {total} 条记录，每页显示
+            </span>
+            <Select value={pageSize.toString()} onValueChange={(value) => handlePageSizeChange(Number(value))}>
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">条</span>
+          </div>
+          
+          {total > pageSize && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+                
+                {/* 页码显示逻辑 */}
+                {(() => {
+                  const totalPages = Math.ceil(total / pageSize)
+                  const pages = []
+                  
+                  if (totalPages <= 7) {
+                    // 总页数少于等于7页，显示所有页码
+                    for (let i = 1; i <= totalPages; i++) {
+                      pages.push(
+                        <PaginationItem key={i}>
+                          <PaginationLink
+                            onClick={() => handlePageChange(i)}
+                            isActive={currentPage === i}
+                            className="cursor-pointer"
+                          >
+                            {i}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    }
+                  } else {
+                    // 总页数大于7页，使用省略号
+                    if (currentPage <= 4) {
+                      // 当前页在前面
+                      for (let i = 1; i <= 5; i++) {
+                        pages.push(
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              onClick={() => handlePageChange(i)}
+                              isActive={currentPage === i}
+                              className="cursor-pointer"
+                            >
+                              {i}
+                            </PaginationLink>
+                          </PaginationItem>
+                        )
+                      }
+                      pages.push(
+                        <PaginationItem key="ellipsis1">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      )
+                      pages.push(
+                        <PaginationItem key={totalPages}>
+                          <PaginationLink
+                            onClick={() => handlePageChange(totalPages)}
+                            className="cursor-pointer"
+                          >
+                            {totalPages}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    } else if (currentPage >= totalPages - 3) {
+                      // 当前页在后面
+                      pages.push(
+                        <PaginationItem key={1}>
+                          <PaginationLink
+                            onClick={() => handlePageChange(1)}
+                            className="cursor-pointer"
+                          >
+                            1
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                      pages.push(
+                        <PaginationItem key="ellipsis1">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      )
+                      for (let i = totalPages - 4; i <= totalPages; i++) {
+                        pages.push(
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              onClick={() => handlePageChange(i)}
+                              isActive={currentPage === i}
+                              className="cursor-pointer"
+                            >
+                              {i}
+                            </PaginationLink>
+                          </PaginationItem>
+                        )
+                      }
+                    } else {
+                      // 当前页在中间
+                      pages.push(
+                        <PaginationItem key={1}>
+                          <PaginationLink
+                            onClick={() => handlePageChange(1)}
+                            className="cursor-pointer"
+                          >
+                            1
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                      pages.push(
+                        <PaginationItem key="ellipsis1">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      )
+                      for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+                        pages.push(
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              onClick={() => handlePageChange(i)}
+                              isActive={currentPage === i}
+                              className="cursor-pointer"
+                            >
+                              {i}
+                            </PaginationLink>
+                          </PaginationItem>
+                        )
+                      }
+                      pages.push(
+                        <PaginationItem key="ellipsis2">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      )
+                      pages.push(
+                        <PaginationItem key={totalPages}>
+                          <PaginationLink
+                            onClick={() => handlePageChange(totalPages)}
+                            className="cursor-pointer"
+                          >
+                            {totalPages}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    }
+                  }
+                  
+                  return pages
+                })()}
+                
+                <PaginationItem>
+                  <PaginationNext 
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    className={currentPage >= Math.ceil(total / pageSize) ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </div>
       </Card>
 
       {/* 对话框 */}

@@ -6,129 +6,296 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { darenApi, type Daren, type PeriodData } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { darenApi, periodApi, type Daren, type PeriodData } from '@/lib/api'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, UserPlus } from 'lucide-react'
+import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, UserPlus, Calendar, BarChart3, Eye, Heart, MessageCircle, Bookmark, Share } from 'lucide-react'
 import { AddDarenToPeriodDialog } from '@/components/features/daren/operations'
-import { EditPeriodDataDialog } from '@/components/features/periods/dialogs'
+import { DarenDetailDialog } from '@/components/features/daren/dialogs'
+import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
+/**
+ * 期数统计数据接口
+ */
+interface PeriodStats {
+  totalDarens: number
+  totalInvestment: number
+  totalExposure: number
+  totalReads: number
+  totalLikes: number
+  totalComments: number
+  totalCollections: number
+  totalForwards: number
+  publishedWorks: number
+  averageEngagement: number
+}
+
+/**
+ * 期数达人数据接口（包含当前期数数据）
+ */
+interface PeriodDaren extends Daren {
+  currentPeriodData?: PeriodData
+}
+
+/**
+ * 期数管理页面组件
+ * 基于新的期数维度API重构，提供完整的期数管理功能
+ */
 export function PeriodManagement() {
-  const [darens, setDarens] = useState<Daren[]>([])
+  // 基础状态
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedPeriod, setSelectedPeriod] = useState('')
   const [periods, setPeriods] = useState<string[]>([])
-  const [stats, setStats] = useState({
+  const [darens, setDarens] = useState<PeriodDaren[]>([])
+  const [stats, setStats] = useState<PeriodStats>({
     totalDarens: 0,
     totalInvestment: 0,
-    totalInteractions: 0,
-    publishedWorks: 0
+    totalExposure: 0,
+    totalReads: 0,
+    totalLikes: 0,
+    totalComments: 0,
+    totalCollections: 0,
+    totalForwards: 0,
+    publishedWorks: 0,
+    averageEngagement: 0
   })
+  
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [pageSize] = useState(20)
+  
+  // 排序状态
+  const [sortBy, setSortBy] = useState<string>('createdAt')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  
+  // 达人详情对话框状态
+  const [selectedDaren, setSelectedDaren] = useState<Daren | null>(null)
+  const [showDarenDetail, setShowDarenDetail] = useState(false)
+  
+  const toast = useToast()
 
-  const loadDarens = async () => {
+  /**
+   * 加载所有可用期数
+   */
+  const loadPeriods = async () => {
     try {
-      setLoading(true)
-      const response = await darenApi.list()
-      setDarens(response.items)
+      const periodsData = await darenApi.getPeriods()
+      setPeriods(periodsData)
       
-      // 提取所有期数
-      const allPeriods = new Set<string>()
-      response.items.forEach((daren: Daren) => {
-        if (daren.periodData && daren.periodData.length > 0) {
-          daren.periodData.forEach(period => {
-            allPeriods.add(period.period)
-          })
-        } else if (daren.period) {
-          allPeriods.add(daren.period)
-        }
-      })
-      
-      const periodsArray = Array.from(allPeriods).sort()
-      setPeriods(periodsArray)
-      
-      // 如果没有选择期数，默认选择最新的期数
-      if (!selectedPeriod && periodsArray.length > 0) {
-        setSelectedPeriod(periodsArray[periodsArray.length - 1])
+      // 如果没有选择期数且有可用期数，选择最新的期数
+      if (!selectedPeriod && periodsData.length > 0) {
+        setSelectedPeriod(periodsData[periodsData.length - 1])
       }
     } catch (error) {
-      console.error('Failed to load darens:', error)
+      console.error('加载期数列表失败:', error)
+      toast.error('加载期数列表失败')
+    }
+  }
+
+  /**
+   * 加载指定期数的达人数据
+   */
+  const loadPeriodDarens = async (period: string, page: number = 1) => {
+    if (!period) return
+    
+    try {
+      setLoading(true)
+      const response = await periodApi.getDarens(period, {
+        page,
+        limit: pageSize
+      })
+      
+      setDarens(response.items || [])
+      setTotalPages(Math.ceil((response.total || 0) / pageSize))
+      setCurrentPage(page)
+    } catch (error) {
+      console.error('加载期数达人数据失败:', error)
+      toast.error('加载达人数据失败')
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadDarens()
-  }, [])
-
-  useEffect(() => {
-    if (selectedPeriod) {
-      calculateStats()
+  /**
+   * 加载期数统计数据
+   */
+  const loadPeriodStats = async (period: string) => {
+    if (!period) return
+    
+    try {
+      const statsData = await periodApi.getStats(period)
+      setStats(statsData || {
+        totalDarens: 0,
+        totalInvestment: 0,
+        totalExposure: 0,
+        totalReads: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalCollections: 0,
+        totalForwards: 0,
+        publishedWorks: 0,
+        averageEngagement: 0
+      })
+    } catch (error) {
+      console.error('加载期数统计失败:', error)
+      // 如果API不存在，手动计算统计数据
+      calculateStatsFromDarens()
     }
-  }, [selectedPeriod, darens])
-
-  const getPeriodData = (daren: Daren): PeriodData | null => {
-    if (daren.periodData && daren.periodData.length > 0) {
-      return daren.periodData.find(p => p.period === selectedPeriod) || null
-    }
-    return null
   }
 
-  const calculateStats = () => {
-    const periodDarens = darens.filter(daren => 
-      daren.periodData?.some(p => p.period === selectedPeriod)
-    )
-    
-    let totalInvestment = 0
-    let totalInteractions = 0
-    let publishedWorks = 0
-    
-    periodDarens.forEach(daren => {
-      const periodData = getPeriodData(daren)
+  /**
+   * 从达人数据手动计算统计信息
+   */
+  const calculateStatsFromDarens = () => {
+    const stats: PeriodStats = {
+      totalDarens: darens.length,
+      totalInvestment: 0,
+      totalExposure: 0,
+      totalReads: 0,
+      totalLikes: 0,
+      totalComments: 0,
+      totalCollections: 0,
+      totalForwards: 0,
+      publishedWorks: 0,
+      averageEngagement: 0
+    }
+
+    darens.forEach(daren => {
+      const periodData = daren.currentPeriodData
       if (periodData) {
-        totalInvestment += (periodData.fee || 0)
-        // 计算互动数：点赞+收藏+评论
-        const likesAndCollections = (periodData.likes || 0) + (periodData.collections || 0)
-        totalInteractions += likesAndCollections + (periodData.comments || 0)
-        if (periodData.currentStatus === '已发布') {
-          publishedWorks++
+        stats.totalInvestment += (periodData.fee || 0)
+        stats.totalExposure += (periodData.exposure || 0)
+        stats.totalReads += (periodData.reads || 0)
+        stats.totalLikes += (periodData.likes || 0)
+        stats.totalComments += (periodData.comments || 0)
+        stats.totalCollections += (periodData.collections || 0)
+        stats.totalForwards += (periodData.forwards || 0)
+        
+        if (periodData.published || periodData.currentStatus === '已发布') {
+          stats.publishedWorks++
         }
       }
     })
-    
-    setStats({
-      totalDarens: periodDarens.length,
-      totalInvestment,
-      totalInteractions,
-      publishedWorks
-    })
+
+    // 计算平均互动率
+    const totalEngagement = stats.totalLikes + stats.totalComments + stats.totalCollections + stats.totalForwards
+    stats.averageEngagement = stats.totalDarens > 0 ? Math.round(totalEngagement / stats.totalDarens) : 0
+
+    setStats(stats)
   }
 
+  /**
+   * 处理期数变更
+   */
+  const handlePeriodChange = async (period: string) => {
+    setSelectedPeriod(period)
+    setCurrentPage(1)
+    await Promise.all([
+      loadPeriodDarens(period, 1),
+      loadPeriodStats(period)
+    ])
+  }
+
+  /**
+   * 处理页面变更
+   */
+  const handlePageChange = (page: number) => {
+    loadPeriodDarens(selectedPeriod, page)
+  }
+
+  /**
+   * 刷新当前期数数据
+   */
+  const refreshData = async () => {
+    if (selectedPeriod) {
+      await Promise.all([
+        loadPeriodDarens(selectedPeriod, currentPage),
+        loadPeriodStats(selectedPeriod)
+      ])
+    }
+  }
+
+  /**
+   * 获取状态徽章样式
+   */
   const getStatusVariant = (status: string) => {
     switch (status) {
-      case '未到店': return 'secondary'
-      case '报价不合适': return 'destructive'
+      case '待联系': return 'secondary'
+      case '已联系': return 'outline'
+      case '已建联': return 'outline'
       case '已到店': return 'default'
       case '已审稿': return 'default'
-      case '已结款': return 'default'
       case '已发布': return 'default'
+      case '已完成': return 'default'
+      case '报价不合适': return 'destructive'
       default: return 'secondary'
     }
   }
 
-  // 过滤达人
+  /**
+   * 过滤达人数据
+   */
   const filteredDarens = darens.filter(daren => 
-    daren.nickname.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    daren.periodData?.some(p => p.period === selectedPeriod)
+    daren.nickname.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  /**
+   * 处理达人点击事件
+   */
+  const handleDarenClick = (daren: PeriodDaren) => {
+    setSelectedDaren(daren)
+    setShowDarenDetail(true)
+  }
+
+  // 初始化加载
+  useEffect(() => {
+    loadPeriods()
+  }, [])
+
+  // 当选择期数变化时加载数据
+  useEffect(() => {
+    if (selectedPeriod) {
+      Promise.all([
+        loadPeriodDarens(selectedPeriod, 1),
+        loadPeriodStats(selectedPeriod)
+      ])
+    }
+  }, [selectedPeriod])
+
+  // 当达人数据变化时重新计算统计
+  useEffect(() => {
+    if (darens.length > 0) {
+      calculateStatsFromDarens()
+    }
+  }, [darens])
 
   return (
     <div className="space-y-6">
+      {/* 页面标题 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">期数管理</h1>
+          <p className="text-muted-foreground">管理不同期数的达人合作数据和作品表现</p>
+        </div>
+      </div>
+
       {/* 期数选择 */}
       <Card>
         <CardHeader>
-          <CardTitle>选择期数</CardTitle>
-          <CardDescription>选择要查看的合作期数</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                选择期数
+              </CardTitle>
+              <CardDescription>选择要查看和管理的合作期数</CardDescription>
+            </div>
+            <Badge variant="outline" className="text-sm">
+              共 {periods.length} 个期数
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
@@ -137,11 +304,17 @@ export function PeriodManagement() {
                 key={period}
                 variant={selectedPeriod === period ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSelectedPeriod(period)}
+                onClick={() => handlePeriodChange(period)}
+                className="transition-all duration-200"
               >
                 {period}
               </Button>
             ))}
+            {periods.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                暂无期数数据，请先添加达人到期数中
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -158,7 +331,7 @@ export function PeriodManagement() {
               <CardContent>
                 <div className="text-2xl font-bold">{stats.totalDarens}</div>
                 <p className="text-xs text-muted-foreground">
-                  当期参与达人总数
+                  已发布: {stats.publishedWorks} 个
                 </p>
               </CardContent>
             </Card>
@@ -171,33 +344,35 @@ export function PeriodManagement() {
               <CardContent>
                 <div className="text-2xl font-bold">{formatCurrency(stats.totalInvestment)}</div>
                 <p className="text-xs text-muted-foreground">
-                  当期总费用支出
+                  平均: {formatCurrency(stats.totalDarens > 0 ? stats.totalInvestment / stats.totalDarens : 0)}
                 </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">总互动数</CardTitle>
+                <CardTitle className="text-sm font-medium">总曝光量</CardTitle>
+                <Eye className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(stats.totalExposure)}</div>
+                <p className="text-xs text-muted-foreground">
+                  阅读: {formatNumber(stats.totalReads)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">总互动量</CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatNumber(stats.totalInteractions)}</div>
+                <div className="text-2xl font-bold">
+                  {formatNumber(stats.totalLikes + stats.totalComments + stats.totalCollections)}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  点赞与收藏+评论总数
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">已完成作品</CardTitle>
-                <UserPlus className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.publishedWorks}</div>
-                <p className="text-xs text-muted-foreground">
-                  已发布状态的作品数
+                  平均: {formatNumber(stats.averageEngagement)}
                 </p>
               </CardContent>
             </Card>
@@ -208,12 +383,15 @@ export function PeriodManagement() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>{selectedPeriod} - 达人列表</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    {selectedPeriod} - 达人列表
+                  </CardTitle>
                   <CardDescription>查看和管理当期达人合作详情</CardDescription>
                 </div>
                 <AddDarenToPeriodDialog 
                   period={selectedPeriod} 
-                  onSuccess={() => loadDarens()}
+                  onSuccess={refreshData}
                 >
                   <Button>
                     <UserPlus className="h-4 w-4 mr-2" />
@@ -224,9 +402,9 @@ export function PeriodManagement() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {/* 搜索 */}
-                <div className="flex items-center space-x-2">
-                  <div className="relative flex-1">
+                {/* 搜索和筛选 */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
                       placeholder="搜索达人昵称..."
@@ -235,145 +413,82 @@ export function PeriodManagement() {
                       className="pl-10"
                     />
                   </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Select value={`${sortBy}_${sortOrder}`} onValueChange={(value) => {
+                      const [field, order] = value.split('_')
+                      setSortBy(field)
+                      setSortOrder(order as 'asc' | 'desc')
+                    }}>
+                      <SelectTrigger className="w-40">
+                        <SelectValue placeholder="排序方式" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="createdAt_desc">最新添加</SelectItem>
+                        <SelectItem value="fee_desc">报价从高到低</SelectItem>
+                        <SelectItem value="fee_asc">报价从低到高</SelectItem>
+                        <SelectItem value="likes_desc">点赞数从高到低</SelectItem>
+                        <SelectItem value="exposure_desc">曝光量从高到低</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Button variant="outline" size="sm" onClick={refreshData}>
+                      刷新数据
+                    </Button>
+                  </div>
                 </div>
 
-                {/* 表格 */}
+                {/* 数据表格 */}
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>达人信息</TableHead>
-                        <TableHead>当期报价</TableHead>
-                        <TableHead>当期状态</TableHead>
-                        <TableHead>到店时间</TableHead>
-                        <TableHead>作品链接</TableHead>
-                        <TableHead>曝光数</TableHead>
-                        <TableHead>阅读数</TableHead>
-                        <TableHead>点赞与收藏</TableHead>
-                        <TableHead>评论数</TableHead>
-                        <TableHead>转发数</TableHead>
-                        <TableHead>操作</TableHead>
+                        <TableHead>达人昵称</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8">
-                            加载中...
+                          <TableCell colSpan={1} className="text-center py-8">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                              加载中...
+                            </div>
                           </TableCell>
                         </TableRow>
                       ) : filteredDarens.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8">
-                            暂无数据
+                          <TableCell colSpan={1} className="text-center py-8">
+                            <div className="text-muted-foreground">
+                              {searchTerm ? '没有找到匹配的达人' : '暂无达人数据'}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ) : (
                         filteredDarens.map((daren) => {
-                          const periodData = getPeriodData(daren)
                           return (
-                            <TableRow key={daren._id}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{daren.nickname}</div>
-                                  <div className="text-sm text-gray-500">{daren.xiaohongshuId}</div>
-                                  {daren.ipLocation && (
-                                    <div className="text-xs text-gray-400">📍 {daren.ipLocation}</div>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium text-green-600">
-                                  {periodData?.fee ? formatCurrency(periodData.fee) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  <Badge 
-                                    variant={getStatusVariant(periodData?.currentStatus || '未到店')}
-                                    className="text-xs"
-                                  >
-                                    {periodData?.currentStatus || '未到店'}
-                                  </Badge>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="text-sm">
-                                  {periodData?.storeArrivalTime ? 
-                                    new Date(periodData.storeArrivalTime).toLocaleString('zh-CN', {
-                                      year: 'numeric',
-                                      month: '2-digit',
-                                      day: '2-digit',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    }) : '-'
-                                  }
-                                </div>
-                              </TableCell>
+                            <TableRow 
+                              key={daren._id} 
+                              className="hover:bg-muted/50 cursor-pointer"
+                              onClick={() => handleDarenClick(daren)}
+                            >
                               <TableCell>
                                 <div className="space-y-1">
-                                  {periodData?.mainPublishLink && (
-                                    <a 
-                                      href={periodData.mainPublishLink} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-xs flex items-center"
-                                    >
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      主发布
-                                    </a>
-                                  )}
-                                  {periodData?.syncPublishLink && (
-                                    <a 
-                                      href={periodData.syncPublishLink} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-green-600 hover:text-green-800 text-xs flex items-center"
-                                    >
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      同步发布
-                                    </a>
-                                  )}
+                                  <div className="font-medium text-blue-600 hover:text-blue-800">
+                                    {daren.nickname}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {daren.xiaohongshuId && (
+                                      <div>ID: {daren.xiaohongshuId}</div>
+                                    )}
+                                    {daren.ipLocation && (
+                                      <div>📍 {daren.ipLocation}</div>
+                                    )}
+                                    <div className="text-xs text-gray-400 mt-1">
+                                      点击查看详细信息
+                                    </div>
+                                  </div>
                                 </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {periodData?.exposure ? formatNumber(periodData.exposure) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">
-                                  {periodData?.reads ? formatNumber(periodData.reads) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium text-purple-600">
-                                  💖 {periodData ? formatNumber((periodData.likes || 0) + (periodData.collections || 0)) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium text-blue-600">
-                                  {periodData?.comments ? formatNumber(periodData.comments) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium text-green-600">
-                                  {periodData?.forwards ? formatNumber(periodData.forwards) : '-'}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                {periodData && (
-                                  <EditPeriodDataDialog
-                                    daren={daren}
-                                    period={selectedPeriod}
-                                    periodData={periodData}
-                                    onSuccess={() => loadDarens()}
-                                  >
-                                    <Button variant="outline" size="sm">
-                                      编辑
-                                    </Button>
-                                  </EditPeriodDataDialog>
-                                )}
                               </TableCell>
                             </TableRow>
                           )
@@ -382,11 +497,61 @@ export function PeriodManagement() {
                     </TableBody>
                   </Table>
                 </div>
+
+                {/* 分页控件 */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">
+                      显示第 {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, stats.totalDarens)} 条，
+                      共 {stats.totalDarens} 条记录
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                      >
+                        上一页
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          const page = i + 1
+                          return (
+                            <Button
+                              key={page}
+                              variant={currentPage === page ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handlePageChange(page)}
+                            >
+                              {page}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                      >
+                        下一页
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </>
       )}
+      
+      {/* 达人详情对话框 */}
+      <DarenDetailDialog 
+        open={showDarenDetail}
+        onOpenChange={setShowDarenDetail}
+        daren={selectedDaren}
+      />
     </div>
   )
 }

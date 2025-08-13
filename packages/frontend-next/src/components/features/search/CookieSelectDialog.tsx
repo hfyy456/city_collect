@@ -1,5 +1,7 @@
 'use client'
 
+/* eslint-disable react-hooks/rules-of-hooks */
+
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -37,16 +39,21 @@ export function CookieSelectDialog({
     }
   }, [open])
 
-  const loadCookies = () => {
-    const cookieHistory = CookieStorage.getCookieHistory()
-    setCookies(cookieHistory)
-    
-    // 如果有默认cookie，自动选中
-    const defaultCookie = cookieHistory.find(c => c.isDefault)
-    if (defaultCookie) {
-      setSelectedCookieId(defaultCookie.id)
-    } else if (cookieHistory.length > 0) {
-      setSelectedCookieId(cookieHistory[0].id)
+  const loadCookies = async () => {
+    try {
+      const cookieHistory = await CookieStorage.getCookieHistory()
+      setCookies(cookieHistory)
+      
+      // 如果有默认cookie，自动选中
+      const defaultCookie = cookieHistory.find(c => c.isDefault)
+      if (defaultCookie) {
+        setSelectedCookieId(defaultCookie.id)
+      } else if (cookieHistory.length > 0) {
+        setSelectedCookieId(cookieHistory[0].id)
+      }
+    } catch (error) {
+      console.error('加载Cookie历史失败:', error)
+      setCookies([])
     }
   }
 
@@ -58,9 +65,9 @@ export function CookieSelectDialog({
       const selectedCookie = cookies.find(c => c.id === selectedCookieId)
       if (selectedCookie) {
         // 设置为默认cookie
-        CookieStorage.setDefaultCookie(selectedCookieId)
+        await CookieStorage.setDefaultCookie(selectedCookieId)
         // 更新使用时间
-        CookieStorage.useCookie(selectedCookieId)
+        await CookieStorage.useCookie(selectedCookieId)
         // 返回选中的cookie
         onCookieSelected(selectedCookie.cookie)
         onOpenChange(false)

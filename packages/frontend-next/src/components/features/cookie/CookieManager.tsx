@@ -1,5 +1,7 @@
 'use client'
 
+/* eslint-disable react-hooks/rules-of-hooks */
+
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -53,9 +55,14 @@ export function CookieManager({ onCookieSelected }: CookieManagerProps) {
     loadCookies()
   }, [])
 
-  const loadCookies = () => {
-    const cookieHistory = CookieStorage.getCookieHistory()
-    setCookies(cookieHistory)
+  const loadCookies = async () => {
+    try {
+      const cookieHistory = await CookieStorage.getCookieHistory()
+      setCookies(cookieHistory)
+    } catch (error) {
+      console.error('加载Cookie历史失败:', error)
+      setCookies([])
+    }
   }
 
   const handleSaveCookie = async () => {
@@ -72,8 +79,8 @@ export function CookieManager({ onCookieSelected }: CookieManagerProps) {
         return
       }
 
-      CookieStorage.saveCookie(newCookieName.trim(), newCookieValue.trim())
-      loadCookies()
+      await CookieStorage.saveCookie(newCookieName.trim(), newCookieValue.trim())
+      await loadCookies()
       setNewCookieName('')
       setNewCookieValue('')
       setShowAddDialog(false)
@@ -85,30 +92,37 @@ export function CookieManager({ onCookieSelected }: CookieManagerProps) {
     }
   }
 
-  const handleSelectCookie = (cookie: SavedCookie) => {
-    CookieStorage.setDefaultCookie(cookie.id)
-    CookieStorage.useCookie(cookie.id)
-    loadCookies()
-    onCookieSelected?.(cookie.cookie)
-    toast.success(`已选择Cookie: ${cookie.name}`)
+  const handleSelectCookie = async (cookie: SavedCookie) => {
+    try {
+      await CookieStorage.setDefaultCookie(cookie.id)
+      await CookieStorage.useCookie(cookie.id)
+      await loadCookies()
+      onCookieSelected?.(cookie.cookie)
+      toast.success(`已选择Cookie: ${cookie.name}`)
+    } catch (error) {
+      console.error('选择Cookie失败:', error)
+      toast.error('选择Cookie失败')
+    }
   }
 
-  const handleDeleteCookie = (cookieId: string) => {
+  const handleDeleteCookie = async (cookieId: string) => {
     try {
-      CookieStorage.deleteCookie(cookieId)
-      loadCookies()
+      await CookieStorage.deleteCookie(cookieId)
+      await loadCookies()
       toast.success('Cookie已删除')
     } catch (error) {
+      console.error('删除Cookie失败:', error)
       toast.error('删除Cookie失败')
     }
   }
 
-  const handleSetDefaultCookie = (cookieId: string) => {
+  const handleSetDefaultCookie = async (cookieId: string) => {
     try {
-      CookieStorage.setDefaultCookie(cookieId)
-      loadCookies()
+      await CookieStorage.setDefaultCookie(cookieId)
+      await loadCookies()
       toast.success('已设置为默认Cookie')
     } catch (error) {
+      console.error('设置默认Cookie失败:', error)
       toast.error('设置默认Cookie失败')
     }
   }

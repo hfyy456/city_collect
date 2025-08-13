@@ -122,7 +122,7 @@ export function BatchOperations({
       item.likesAndCollections,
       item.fee || '',
       item.contactInfo || '',
-      item.cooperationMethod || '',
+      '',
       item.period || '',
       item.remarks || '',
       new Date(item.createdAt).toLocaleString()

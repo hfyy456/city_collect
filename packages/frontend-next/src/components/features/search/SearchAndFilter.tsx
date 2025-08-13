@@ -136,26 +136,7 @@ export function SearchAndFilter({
               </Select>
             </div>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">合作方式</label>
-              <Select
-                value={searchParams.cooperationMethod || ''}
-                onValueChange={(value) => 
-                  onSearchParamsChange({ ...searchParams, cooperationMethod: value || undefined })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择合作方式" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">全部方式</SelectItem>
-                  <SelectItem value="图文">图文</SelectItem>
-                  <SelectItem value="视频">视频</SelectItem>
-                  <SelectItem value="直播">直播</SelectItem>
-                  <SelectItem value="探店">探店</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -258,15 +239,7 @@ export function SearchAndFilter({
               />
             </Badge>
           )}
-          {searchParams.cooperationMethod && (
-            <Badge variant="secondary" className="flex items-center gap-1">
-              合作: {searchParams.cooperationMethod}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => onSearchParamsChange({ ...searchParams, cooperationMethod: undefined })}
-              />
-            </Badge>
-          )}
+
           {(searchParams.minFollowers || searchParams.maxFollowers) && (
             <Badge variant="secondary" className="flex items-center gap-1">
               粉丝: {searchParams.minFollowers || 0} - {searchParams.maxFollowers || '∞'}

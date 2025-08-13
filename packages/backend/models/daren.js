@@ -5,7 +5,6 @@ const Schema = mongoose.Schema;
 const PeriodDataSchema = new Schema({
   period: { type: String, required: true },
   fee: { type: Number },
-  cooperationMethod: { type: String },
   
   // 作品链接
   mainPublishLink: { type: String },
@@ -13,27 +12,12 @@ const PeriodDataSchema = new Schema({
   
   // 联系和状态信息
   contactPerson: { type: String },
-  hasConnection: { type: Boolean, default: false },
-  inGroup: { type: Boolean, default: false },
   storeArrivalTime: { type: Date },
-  arrivedAtStore: { type: Boolean, default: false },
-  reviewed: { type: Boolean, default: false },
-  published: { type: Boolean, default: false },
-  
-  // 当期状态 (新增)
-  currentStatus: { 
-    type: String, 
-    enum: ['待联系', '已联系', '已建联', '已到店', '已审稿', '已发布', '已完成'],
-    default: '待联系'
-  },
   
   // 数据表现
-  exposure: { type: Number },
-  reads: { type: Number },
   likes: { type: Number },
   comments: { type: Number },
   collections: { type: Number },
-  forwards: { type: Number },
   
   // 期数备注
   periodRemarks: { type: String },
@@ -68,16 +52,12 @@ const DarenSchema = new Schema({
   // 兼容字段（用于向后兼容，逐步迁移）
   period: { type: String },
   fee: { type: Number },
-  cooperationMethod: { type: String },
   mainPublishLink: { type: String },
   syncPublishLink: { type: String },
   storeArrivalTime: { type: Date },
-  exposure: { type: Number },
-  reads: { type: Number },
   likes: { type: Number },
   comments: { type: Number },
   collections: { type: Number },
-  forwards: { type: Number },
   likesAndCollections: { type: Number },
 }, { timestamps: true });
 
@@ -87,8 +67,17 @@ DarenSchema.methods.addPeriodData = function(periodInfo) {
   const existingIndex = this.periodData.findIndex(p => p.period === periodInfo.period);
   
   if (existingIndex >= 0) {
-    // 更新现有期数数据
-    this.periodData[existingIndex] = { ...this.periodData[existingIndex].toObject(), ...periodInfo, updatedAt: new Date() };
+    // 更新现有期数数据 - 只更新传入的字段，保留其他字段
+    const existingData = this.periodData[existingIndex].toObject();
+    // 过滤掉undefined的字段，只更新有值的字段
+    const filteredPeriodInfo = Object.fromEntries(
+      Object.entries(periodInfo).filter(([key, value]) => value !== undefined)
+    );
+    this.periodData[existingIndex] = { 
+      ...existingData, 
+      ...filteredPeriodInfo, 
+      updatedAt: new Date() 
+    };
   } else {
     // 添加新期数数据
     this.periodData.push(periodInfo);

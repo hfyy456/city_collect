@@ -53,12 +53,6 @@ function normalizeDarenData(data) {
   if (normalized.fee !== undefined) {
     normalized.fee = normalizeNumber(normalized.fee);
   }
-  if (normalized.exposure !== undefined) {
-    normalized.exposure = normalizeNumber(normalized.exposure);
-  }
-  if (normalized.reads !== undefined) {
-    normalized.reads = normalizeNumber(normalized.reads);
-  }
   if (normalized.forwards !== undefined) {
     normalized.forwards = normalizeNumber(normalized.forwards);
   }
@@ -71,8 +65,6 @@ function normalizeDarenData(data) {
       collections: normalizeNumber(period.collections),
       comments: normalizeNumber(period.comments),
       fee: normalizeNumber(period.fee),
-      exposure: normalizeNumber(period.exposure),
-      reads: normalizeNumber(period.reads),
       forwards: normalizeNumber(period.forwards)
     }));
   }
@@ -97,7 +89,6 @@ async function routes(fastify, options) {
         startDate,
         endDate,
         ipLocations,
-        cooperationMethod,
         sortBy = 'createdAt_desc'
       } = request.query;
 
@@ -144,10 +135,6 @@ async function routes(fastify, options) {
       if (ipLocations && ipLocations.length > 0) {
         const locationArray = Array.isArray(ipLocations) ? ipLocations : [ipLocations];
         query.ipLocation = { $in: locationArray };
-      }
-      
-      if (cooperationMethod) {
-        query.cooperationMethod = { $regex: cooperationMethod, $options: 'i' };
       }
       
       // Sorting
@@ -304,18 +291,12 @@ async function routes(fastify, options) {
       
       let totalFee = 0;
       let totalEngagement = 0;
-      let publishedCount = 0;
-      let cooperationStats = {};
       
       darens.forEach(daren => {
         const periodData = daren.getPeriodData(period);
         if (periodData) {
           totalFee += periodData.fee || 0;
           totalEngagement += (periodData.likes || 0) + (periodData.comments || 0) + (periodData.collections || 0);
-          if (periodData.published) publishedCount++;
-          
-          const cooperation = periodData.cooperationMethod || '未设置';
-          cooperationStats[cooperation] = (cooperationStats[cooperation] || 0) + 1;
         }
       });
       
@@ -324,9 +305,6 @@ async function routes(fastify, options) {
         totalDarens: darens.length,
         totalFee,
         totalEngagement,
-        publishedCount,
-        publishedRate: darens.length > 0 ? Math.round((publishedCount / darens.length) * 100) : 0,
-        cooperationStats,
         avgEngagement: darens.length > 0 ? Math.round(totalEngagement / darens.length) : 0
       });
     } catch (err) {
@@ -376,9 +354,7 @@ async function routes(fastify, options) {
               likes: periodData.likes,
               comments: periodData.comments,
               collections: periodData.collections,
-              published: periodData.published,
               fee: periodData.fee,
-              cooperationMethod: periodData.cooperationMethod,
               updatedAt: periodData.updatedAt
             });
           }

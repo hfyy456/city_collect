@@ -144,7 +144,7 @@ export function AdvancedSearch({ onSearch, initialParams = {} }: AdvancedSearchP
     if (searchParams.likesMin || searchParams.likesMax) count++
     if (searchParams.startDate || searchParams.endDate) count++
     if (searchParams.ipLocations?.length) count++
-    if (searchParams.cooperationMethod) count++
+
     return count
   }
 

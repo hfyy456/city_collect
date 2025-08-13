@@ -104,13 +104,7 @@ export function QuickAddToPeriodDialog({ period, onSuccess, children }: QuickAdd
       const periodData = {
         period: selectedPeriod,
         fee: parseFloat(fee),
-        contactPerson: '',
-        cooperationMethod: '探店', // 默认合作方式
-        hasConnection: false,
-        inGroup: false,
-        arrivedAtStore: false,
-        reviewed: false,
-        published: false
+        contactPerson: ''
       }
 
       // 为达人添加期数数据

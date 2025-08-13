@@ -155,16 +155,7 @@ export function DarenTableRow({
                             {period.fee ? formatCurrency(period.fee) : '未设置'}
                           </span>
                         </div>
-                        {period.currentStatus && (
-                          <div className="text-xs text-gray-600 mt-1">
-                            状态: {period.currentStatus}
-                          </div>
-                        )}
-                        {period.cooperationMethod && (
-                          <div className="text-xs text-gray-600">
-                            合作方式: {period.cooperationMethod}
-                          </div>
-                        )}
+
                       </div>
                     ))}
                   </div>

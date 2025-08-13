@@ -54,7 +54,7 @@ async function normalizeNumericData() {
       const updates = {};
       
       // 标准化顶级字段
-      const topLevelFields = ['followers', 'likes', 'comments', 'collections', 'forwards', 'exposure', 'reads'];
+      const topLevelFields = ['followers', 'likes', 'comments', 'collections', 'forwards'];
       
       for (const field of topLevelFields) {
         if (daren[field] !== undefined && daren[field] !== null) {
@@ -83,7 +83,7 @@ async function normalizeNumericData() {
           const periodUpdates = { ...period.toObject() };
           let periodHasUpdates = false;
           
-          const periodFields = ['likes', 'comments', 'collections', 'forwards', 'exposure', 'reads', 'fee'];
+          const periodFields = ['likes', 'comments', 'collections', 'forwards', 'fee'];
           
           for (const field of periodFields) {
             if (period[field] !== undefined && period[field] !== null) {

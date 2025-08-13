@@ -125,16 +125,44 @@ export function DarenManagement() {
 
   // 更新达人主页数据
   const handleUpdateHomePage = async (daren: Daren) => {
+    console.log('🔍 [DEBUG] 开始更新达人主页数据，达人:', daren.nickname)
+    
     if (!daren.homePage) {
+      console.log('❌ [DEBUG] 没有主页链接')
       toast.error('该达人没有设置主页链接，无法更新数据')
       return
     }
+    
+    console.log('🔗 [DEBUG] 主页链接:', daren.homePage)
 
     // 获取默认Cookie
-    const defaultCookie = CookieStorage.getDefaultCookie()
+    console.log('🍪 [DEBUG] 开始获取默认Cookie...')
+    const defaultCookie = await CookieStorage.getDefaultCookie()
+    console.log('🍪 [DEBUG] 获取到的Cookie:', defaultCookie ? `长度: ${defaultCookie.length}` : '空值')
+    
+    // 获取Cookie历史记录进行调试
+    const cookieHistory = await CookieStorage.getCookieHistory()
+    console.log('📋 [DEBUG] Cookie历史记录数量:', cookieHistory.length)
+    console.log('📋 [DEBUG] Cookie历史记录:', cookieHistory.map(c => ({
+      name: c.name,
+      isDefault: c.isDefault,
+      isExpired: c.isExpired,
+      lastUsed: c.lastUsed,
+      cookieLength: c.cookie?.length || 0
+    })))
+    
+    // 获取默认Cookie记录
+    const defaultRecord = await CookieStorage.getDefaultCookieRecord()
+    console.log('🎯 [DEBUG] 默认Cookie记录:', defaultRecord ? {
+      name: defaultRecord.name,
+      isDefault: defaultRecord.isDefault,
+      isExpired: defaultRecord.isExpired,
+      cookieLength: defaultRecord.cookie?.length || 0
+    } : '无默认记录')
     
     // 如果没有默认cookie，提示用户设置
     if (!defaultCookie) {
+      console.log('❌ [DEBUG] 没有获取到默认Cookie，停止执行')
       toast.error('请先在导航栏中设置默认Cookie')
       return
     }
@@ -145,10 +173,14 @@ export function DarenManagement() {
 
   // 执行主页数据更新的实际逻辑
   const performUpdateHomePage = async (daren: Daren, cookie: string) => {
-    setUpdatingItems(prev => [...prev, daren._id!])
+    const darenId = daren._id!
+    setUpdatingItems(prev => [...prev, darenId])
+    
     try {
+      console.log('🚀 [DEBUG] 开始调用解析API...')
       // 调用解析API获取最新数据，传入cookie参数
       const parseResult = await darenApi.parseXhsUser(daren.homePage!, cookie)
+      console.log('📊 [DEBUG] 解析结果:', parseResult)
       
       if (parseResult.success) {
         // 更新达人信息
@@ -160,17 +192,21 @@ export function DarenManagement() {
           ipLocation: parseResult.ipLocation || daren.ipLocation
         }
         
-        await darenApi.update(daren._id!, updateData)
+        console.log('💾 [DEBUG] 准备更新数据:', updateData)
+        await darenApi.update(darenId, updateData)
         toast.success('主页数据更新成功！')
-        loadDarens() // 重新加载数据
+        
+        // 重新加载数据
+        loadDarens()
       } else {
+        console.log('❌ [DEBUG] 解析失败:', parseResult.message)
         toast.error(`更新失败: ${parseResult.message || '无法解析用户信息'}`)
       }
     } catch (error) {
-      console.error('更新主页数据失败:', error)
+      console.error('💥 [DEBUG] 更新主页数据失败:', error)
       toast.error('更新主页数据失败，请稍后重试')
     } finally {
-      setUpdatingItems(prev => prev.filter(id => id !== daren._id))
+      setUpdatingItems(prev => prev.filter(id => id !== darenId))
     }
   }
 

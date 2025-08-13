@@ -103,7 +103,7 @@ export function QuickAddToPeriodDialog({ open, onOpenChange, daren }: QuickAddTo
       const periodData = {
         period,
         fee: parseFloat(fee) || 0,
-        cooperationMethod: '探店', // 默认合作方式
+
         contactPerson: '', // 空联系人
         isContacted: false,
         isConfirmed: false,

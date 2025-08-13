@@ -78,9 +78,36 @@ export function AddDarenDialog({ open: externalOpen, onOpenChange, onSuccess }: 
       setParseError('')
       setParseSuccess(false)
       
-      // 使用导航栏中的默认Cookie
-      const defaultCookie = CookieStorage.getDefaultCookie()
+      console.log('🔍 [DEBUG] 开始解析小红书页面:', formData.homePage)
+      
+      // 获取默认Cookie
+      console.log('🍪 [DEBUG] 开始获取默认Cookie...')
+      const defaultCookie = await CookieStorage.getDefaultCookie()
+      console.log('🍪 [DEBUG] 获取到的Cookie:', defaultCookie ? `长度: ${defaultCookie.length}` : '空值')
+      
+      // 获取Cookie历史记录进行调试
+      const cookieHistory = await CookieStorage.getCookieHistory()
+      console.log('📋 [DEBUG] Cookie历史记录数量:', cookieHistory.length)
+      console.log('📋 [DEBUG] Cookie历史记录:', cookieHistory.map(c => ({
+        name: c.name,
+        isDefault: c.isDefault,
+        isExpired: c.isExpired,
+        lastUsed: c.lastUsed,
+        cookieLength: c.cookie?.length || 0
+      })))
+      
+      // 获取默认Cookie记录
+      const defaultRecord = await CookieStorage.getDefaultCookieRecord()
+      console.log('🎯 [DEBUG] 默认Cookie记录:', defaultRecord ? {
+        name: defaultRecord.name,
+        isDefault: defaultRecord.isDefault,
+        isExpired: defaultRecord.isExpired,
+        cookieLength: defaultRecord.cookie?.length || 0
+      } : '无默认记录')
+      
+      console.log('🚀 [DEBUG] 开始调用解析API...')
       const result = await darenApi.parseXhsUser(formData.homePage, defaultCookie)
+      console.log('📊 [DEBUG] 解析结果:', result)
       
       if (result.success) {
         setFormData(prev => ({
@@ -93,22 +120,24 @@ export function AddDarenDialog({ open: externalOpen, onOpenChange, onSuccess }: 
         }))
         
         setParseSuccess(true)
-        console.log('✅ 解析成功:', result.parseMethod)
+        console.log('✅ [DEBUG] 解析成功:', result.parseMethod)
       } else {
-        console.warn('⚠️ 解析不完整:', result.message || '未获取到完整数据')
+        console.log('❌ [DEBUG] 解析失败:', result.message || '未获取到完整数据')
         setParseError(result.message || '解析失败，请检查链接是否正确')
         if (result.suggestions) {
-          console.log('建议:', result.suggestions)
+          console.log('💡 [DEBUG] 建议:', result.suggestions)
         }
         
         if (result.cookieRequired && !defaultCookie) {
+          console.log('🍪 [DEBUG] 需要Cookie但未获取到默认Cookie')
           setParseError('需要Cookie才能获取完整数据，请在导航栏中设置Cookie')
         }
       }
     } catch (error: any) {
-      console.error('解析小红书页面失败:', error)
+      console.error('💥 [DEBUG] 解析小红书页面失败:', error)
       setParseError('网络错误或链接格式不正确，请重试')
       if (error.response?.status === 403 || error.response?.status === 401) {
+        console.log('🔒 [DEBUG] 认证错误，显示Cookie输入框')
         setShowCookieInput(true)
       }
     } finally {

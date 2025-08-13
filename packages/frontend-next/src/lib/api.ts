@@ -22,7 +22,6 @@ export interface Daren {
   // 兼容字段
   period?: string
   fee?: number
-  cooperationMethod?: string
   mainPublishLink?: string
   syncPublishLink?: string
   likes?: number
@@ -37,23 +36,13 @@ export interface PeriodData {
   _id: string
   period: string
   fee?: number
-  cooperationMethod?: string
   mainPublishLink?: string
   syncPublishLink?: string
   contactPerson?: string
-  hasConnection?: boolean
-  inGroup?: boolean
   storeArrivalTime?: string
-  arrivedAtStore?: boolean
-  reviewed?: boolean
-  published?: boolean
-  currentStatus?: '待联系' | '已联系' | '已建联' | '已到店' | '已审稿' | '已发布' | '已完成'
-  exposure?: number
-  reads?: number
   likes?: number
   comments?: number
   collections?: number
-  forwards?: number
   periodRemarks?: string
   createdAt: string
   updatedAt: string
@@ -76,7 +65,6 @@ export interface SearchParams {
   startDate?: string
   endDate?: string
   ipLocations?: string[]
-  cooperationMethod?: string
   sortBy?: string
 }
 

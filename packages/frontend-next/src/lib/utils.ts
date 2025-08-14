@@ -65,35 +65,62 @@ export function formatDate(date: string | Date | undefined): string {
   })
 }
 
-// 数字标准化函数 - 与后端保持一致
+/**
+ * 数字标准化函数 - 与后端保持一致
+ * 将各种格式的数字字符串转换为标准数字
+ * @param value 输入值（数字、字符串等）
+ * @returns 标准化后的数字
+ * @throws Error 当无法解析时抛出错误
+ */
 export function normalizeNumber(value: any): number {
-  if (!value) return 0
+  if (!value && value !== 0) return 0
   
   // 如果已经是数字，直接返回
   if (typeof value === 'number') {
+    if (isNaN(value) || !isFinite(value)) {
+      throw new Error(`无效的数字值: ${value}`)
+    }
     return Math.round(value)
   }
   
   // 转换为字符串处理
   const str = value.toString().trim()
+  if (!str) return 0
   
-  // 处理带单位的数字
+  // 处理带"万"单位的数字
   if (str.includes('万')) {
-    const num = parseFloat(str.replace('万', ''))
-    return isNaN(num) ? 0 : Math.round(num * 10000)
+    const numStr = str.replace('万', '').trim()
+    const num = parseFloat(numStr)
+    if (isNaN(num)) {
+      throw new Error(`无法解析带万单位的数字: ${str}`)
+    }
+    return Math.round(num * 10000)
   }
   
+  // 处理带"k"或"K"单位的数字
   if (str.includes('k') || str.includes('K')) {
-    const num = parseFloat(str.replace(/[kK]/, ''))
-    return isNaN(num) ? 0 : Math.round(num * 1000)
+    const numStr = str.replace(/[kK]/, '').trim()
+    const num = parseFloat(numStr)
+    if (isNaN(num)) {
+      throw new Error(`无法解析带k单位的数字: ${str}`)
+    }
+    return Math.round(num * 1000)
   }
   
   // 处理纯数字字符串
   const num = parseFloat(str)
-  return isNaN(num) ? 0 : Math.round(num)
+  if (isNaN(num)) {
+    throw new Error(`无法解析数字: ${str}`)
+  }
+  return Math.round(num)
 }
 
-// 达人数据标准化函数
+/**
+ * 达人数据标准化函数
+ * 将包含中文单位的数字字符串转换为标准数字格式
+ * @param data 原始达人数据
+ * @returns 标准化后的达人数据
+ */
 export function normalizeDarenData(data: any): any {
   const normalized = { ...data }
   
@@ -102,7 +129,13 @@ export function normalizeDarenData(data: any): any {
   
   numericFields.forEach(field => {
     if (normalized[field] !== undefined && normalized[field] !== null && normalized[field] !== '') {
-      normalized[field] = normalizeNumber(normalized[field])
+      try {
+        normalized[field] = normalizeNumber(normalized[field])
+      } catch (error) {
+        console.warn(`标准化字段 ${field} 失败:`, normalized[field], error)
+        // 如果标准化失败，设置为0而不是保留原值
+        normalized[field] = 0
+      }
     }
   })
   
@@ -112,7 +145,12 @@ export function normalizeDarenData(data: any): any {
       const normalizedPeriod = { ...period }
       numericFields.forEach(field => {
         if (normalizedPeriod[field] !== undefined && normalizedPeriod[field] !== null && normalizedPeriod[field] !== '') {
-          normalizedPeriod[field] = normalizeNumber(normalizedPeriod[field])
+          try {
+            normalizedPeriod[field] = normalizeNumber(normalizedPeriod[field])
+          } catch (error) {
+            console.warn(`标准化期数数据字段 ${field} 失败:`, normalizedPeriod[field], error)
+            normalizedPeriod[field] = 0
+          }
         }
       })
       return normalizedPeriod

@@ -1,33 +1,6 @@
 const mongoose = require('mongoose');
 const Daren = require('../models/daren');
-
-// 数字标准化函数
-function normalizeNumber(value) {
-  if (!value) return 0;
-  
-  // 如果已经是数字，直接返回
-  if (typeof value === 'number') {
-    return value;
-  }
-  
-  // 转换为字符串处理
-  const str = value.toString().trim();
-  
-  // 处理带单位的数字
-  if (str.includes('万')) {
-    const num = parseFloat(str.replace('万', ''));
-    return isNaN(num) ? 0 : Math.round(num * 10000);
-  }
-  
-  if (str.includes('k') || str.includes('K')) {
-    const num = parseFloat(str.replace(/[kK]/, ''));
-    return isNaN(num) ? 0 : Math.round(num * 1000);
-  }
-  
-  // 处理纯数字字符串
-  const num = parseFloat(str);
-  return isNaN(num) ? 0 : Math.round(num);
-}
+const { normalizeNumber } = require('../utils/normalize');
 
 // 数据标准化脚本
 async function normalizeNumericData() {

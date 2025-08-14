@@ -10,6 +10,9 @@ const fastify = require('fastify')({ logger: true });
 const mongoose = require('mongoose');
 const cors = require('@fastify/cors');
 const darenRoutes = require('./routes/daren');
+const periodRoutes = require('./routes/periods');
+const cookieRoutes = require('./routes/cookies');
+const settingsRoutes = require('./routes/settings');
 
 // TODO: Replace with your MongoDB connection string
 const mongoConnectionString = 'mongodb://47.121.31.68:32233/city_collect';
@@ -23,6 +26,9 @@ fastify.register(cors, {
 });
 
 fastify.register(darenRoutes);
+fastify.register(periodRoutes);
+fastify.register(cookieRoutes);
+fastify.register(settingsRoutes);
 
 fastify.get('/', async (request, reply) => {
   return { hello: 'world' };
@@ -30,7 +36,8 @@ fastify.get('/', async (request, reply) => {
 
 const start = async () => {
   try {
-    await fastify.listen({ port: 3000 });
+    await fastify.listen({ port: 3005 });
+    console.log('🚀 服务器启动成功，端口: 3005');
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { darenApi, periodApi, type Daren, type PeriodData } from '@/lib/api'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { CookieStorage } from '@/lib/cookieStorage'
-import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, UserPlus, Calendar, BarChart3, Eye, Heart, MessageCircle, Bookmark, Share, Edit3, RefreshCw } from 'lucide-react'
+import { Search, Filter, ExternalLink, DollarSign, TrendingUp, Users, UserPlus, Calendar, BarChart3, Eye, Heart, MessageCircle, Bookmark, Share, Edit3, RefreshCw, Trash2 } from 'lucide-react'
 import { AddDarenToPeriodDialog } from '@/components/features/daren/operations'
 import { DarenDetailDialog } from '@/components/features/daren/dialogs'
 import { EditPeriodDataDialog } from '@/components/features/periods/EditPeriodDataDialog'
+import { DeleteConfirmDialog } from '@/components/features/daren/dialogs/DeleteConfirmDialog'
 import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
 /**
@@ -73,7 +74,14 @@ export function PeriodManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   
   // 更新作品数据状态
-  const [updatingWorkData, setUpdatingWorkData] = useState<string[]>([])
+  const [updatingWorkData, setUpdatingWorkData] = useState<string[]>([])  
+  
+  // 删除相关状态
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletePeriodDialogOpen, setDeletePeriodDialogOpen] = useState(false)
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false)
+  const [deletingDaren, setDeletingDaren] = useState<PeriodDaren | null>(null)
+  const [deleting, setDeleting] = useState(false)
   
   const toast = useToast()
 
@@ -82,16 +90,36 @@ export function PeriodManagement() {
    */
   const loadPeriods = async () => {
     try {
-      const periodsData = await darenApi.getPeriods()
-      setPeriods(periodsData)
+      // 使用新的期数API获取期数列表
+      const periodsResponse = await periodApi.list()
+      const periodsData = periodsResponse.periods || periodsResponse || []
+      
+      // 提取期数名称
+      const periodNames = periodsData.map((period: any) => 
+        typeof period === 'string' ? period : period.name
+      )
+      
+      setPeriods(periodNames)
       
       // 如果没有选择期数且有可用期数，选择最新的期数
-      if (!selectedPeriod && periodsData.length > 0) {
-        setSelectedPeriod(periodsData[periodsData.length - 1])
+      if (!selectedPeriod && periodNames.length > 0) {
+        setSelectedPeriod(periodNames[periodNames.length - 1])
       }
     } catch (error) {
       console.error('加载期数列表失败:', error)
       toast.error('加载期数列表失败')
+      
+      // 如果新API失败，回退到旧API
+      try {
+        const periodsData = await darenApi.getPeriods()
+        setPeriods(periodsData)
+        
+        if (!selectedPeriod && periodsData.length > 0) {
+          setSelectedPeriod(periodsData[periodsData.length - 1])
+        }
+      } catch (fallbackError) {
+        console.error('回退API也失败:', fallbackError)
+      }
     }
   }
 
@@ -103,7 +131,8 @@ export function PeriodManagement() {
     
     try {
       setLoading(true)
-      const response = await periodApi.getDarens(period, {
+      // 使用新的期数API获取达人数据
+      const response = await periodApi.getInfluencers(period, {
         page,
         limit: pageSize
       })
@@ -114,6 +143,23 @@ export function PeriodManagement() {
     } catch (error) {
       console.error('加载期数达人数据失败:', error)
       toast.error('加载达人数据失败')
+      
+      // 如果新API失败，回退到旧API
+      try {
+        const fallbackResponse = await periodApi.getDarens(period, {
+          page,
+          limit: pageSize
+        })
+        
+        setDarens(fallbackResponse.items || [])
+        setTotalPages(Math.ceil((fallbackResponse.total || 0) / pageSize))
+        setCurrentPage(page)
+      } catch (fallbackError) {
+        console.error('回退API也失败:', fallbackError)
+        setDarens([])
+        setTotalPages(0)
+        setCurrentPage(1)
+      }
     } finally {
       setLoading(false)
     }
@@ -126,7 +172,8 @@ export function PeriodManagement() {
     if (!period) return
     
     try {
-      const statsData = await periodApi.getStats(period)
+      // 使用新的期数统计API
+      const statsData = await periodApi.getNewStats(period)
       setStats(statsData || {
         totalDarens: 0,
         totalInvestment: 0,
@@ -137,8 +184,23 @@ export function PeriodManagement() {
       })
     } catch (error) {
       console.error('加载期数统计失败:', error)
-      // 如果API不存在，手动计算统计数据
-      calculateStatsFromDarens()
+      
+      // 如果新API失败，回退到旧API
+      try {
+        const fallbackStatsData = await periodApi.getStats(period)
+        setStats(fallbackStatsData || {
+          totalDarens: 0,
+          totalInvestment: 0,
+          totalLikes: 0,
+          totalComments: 0,
+          totalCollections: 0,
+          averageEngagement: 0
+        })
+      } catch (fallbackError) {
+        console.error('回退统计API也失败:', fallbackError)
+        // 如果API都不存在，手动计算统计数据
+        calculateStatsFromDarens()
+      }
     }
   }
 
@@ -335,6 +397,130 @@ export function PeriodManagement() {
     }
   }
 
+  /**
+   * 删除整个期数
+   */
+  const handleDeletePeriod = async () => {
+    if (!selectedPeriod) return
+
+    const deletedPeriod = selectedPeriod
+
+    try {
+      setDeleting(true)
+      // 使用期数名称作为ID删除
+      await periodApi.delete(selectedPeriod)
+      toast.success('期数删除成功')
+      setDeletePeriodDialogOpen(false)
+      
+      // 重新加载期数列表
+      await loadPeriods()
+      
+      // 如果删除的是当前选中的期数，选择其他期数或清空
+      if (selectedPeriod === deletedPeriod) {
+        // 获取更新后的期数列表
+        const updatedPeriods = periods.filter(p => p !== deletedPeriod)
+        
+        if (updatedPeriods.length > 0) {
+          // 选择最新的期数
+          const newSelectedPeriod = updatedPeriods[updatedPeriods.length - 1]
+          setSelectedPeriod(newSelectedPeriod)
+          // 加载新选中期数的数据
+          await loadPeriodDarens(newSelectedPeriod)
+          await loadPeriodStats(newSelectedPeriod)
+        } else {
+          // 没有剩余期数，清空选择
+          setSelectedPeriod('')
+          setDarens([])
+          setStats({
+            totalDarens: 0,
+            totalInvestment: 0,
+            totalLikes: 0,
+            totalComments: 0,
+            totalCollections: 0,
+            averageEngagement: 0
+          })
+        }
+      }
+    } catch (error: any) {
+      console.error('删除期数失败:', error)
+      const errorMessage = error.response?.data?.error || '删除期数失败'
+      toast.error(errorMessage)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  /**
+   * 删除单个达人合作
+   */
+  const handleDeleteDarenFromPeriod = async () => {
+    if (!deletingDaren || !selectedPeriod) return
+
+    try {
+      setDeleting(true)
+      await periodApi.removeInfluencer(selectedPeriod, deletingDaren._id!)
+      toast.success('达人合作删除成功')
+      setDeleteDialogOpen(false)
+      setDeletingDaren(null)
+      
+      // 重新加载达人列表
+      await loadPeriodDarens(selectedPeriod, currentPage)
+      await loadPeriodStats(selectedPeriod)
+    } catch (error: any) {
+      console.error('删除达人合作失败:', error)
+      const errorMessage = error.response?.data?.error || '删除达人合作失败'
+      toast.error(errorMessage)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  /**
+   * 清除期数下的所有达人关联记录
+   */
+  const handleClearAllInfluencers = async () => {
+    if (!selectedPeriod) return
+
+    try {
+      setDeleting(true)
+      const result = await periodApi.clearAllInfluencers(selectedPeriod)
+      toast.success(`成功清除 ${result.deletedCount} 个达人关联记录`)
+      setClearAllDialogOpen(false)
+      
+      // 重新加载达人列表和统计数据
+      await loadPeriodDarens(selectedPeriod, currentPage)
+      await loadPeriodStats(selectedPeriod)
+    } catch (error: any) {
+      console.error('清除达人关联记录失败:', error)
+      const errorMessage = error.response?.data?.error || '清除达人关联记录失败'
+      toast.error(errorMessage)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  /**
+   * 打开删除达人确认对话框
+   */
+  const openDeleteDarenDialog = (daren: PeriodDaren) => {
+    setDeletingDaren(daren)
+    setDeleteDialogOpen(true)
+  }
+
+  /**
+   * 打开删除期数确认对话框
+   */
+  const openDeletePeriodDialog = () => {
+    setDeletePeriodDialogOpen(true)
+  }
+
+  /**
+   * 打开清除所有达人关联记录确认对话框
+   */
+  const openClearAllDialog = () => {
+    setClearAllDialogOpen(true)
+  }
+
   // 初始化加载
   useEffect(() => {
     loadPeriods()
@@ -378,9 +564,33 @@ export function PeriodManagement() {
               </CardTitle>
               <CardDescription>选择要查看和管理的合作期数</CardDescription>
             </div>
-            <Badge variant="outline" className="text-sm">
-              共 {periods.length} 个期数
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-sm">
+                共 {periods.length} 个期数
+              </Badge>
+              {selectedPeriod && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openClearAllDialog}
+                    className="flex items-center gap-1 text-orange-600 border-orange-600 hover:bg-orange-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    清除所有达人
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={openDeletePeriodDialog}
+                    className="flex items-center gap-1"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    删除期数
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -612,6 +822,7 @@ export function PeriodManagement() {
                                     size="sm"
                                     onClick={() => handleEditPeriodData(daren)}
                                     className="h-8 w-8 p-0"
+                                    title="编辑期数数据"
                                   >
                                     <Edit3 className="h-4 w-4" />
                                   </Button>
@@ -628,6 +839,15 @@ export function PeriodManagement() {
                                     ) : (
                                       <RefreshCw className="h-4 w-4" />
                                     )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openDeleteDarenDialog(daren)}
+                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="删除达人合作"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </TableCell>
@@ -702,6 +922,36 @@ export function PeriodManagement() {
         periodData={editingDaren?.currentPeriodData || null}
         period={selectedPeriod}
         onSuccess={handleEditSuccess}
+      />
+      
+      {/* 删除达人合作确认对话框 */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleDeleteDarenFromPeriod}
+        title="删除达人合作"
+        description="您确定要删除这个达人在当前期数的合作记录吗？此操作不可撤销。"
+        itemName={deletingDaren ? `${deletingDaren.nickname} - ${selectedPeriod}` : undefined}
+      />
+      
+      {/* 删除期数确认对话框 */}
+      <DeleteConfirmDialog
+        open={deletePeriodDialogOpen}
+        onOpenChange={setDeletePeriodDialogOpen}
+        onConfirm={handleDeletePeriod}
+        title="删除期数"
+        description="您确定要删除整个期数吗？这将删除该期数下的所有达人合作记录，此操作不可撤销。"
+        itemName={selectedPeriod}
+      />
+      
+      {/* 清除所有达人确认对话框 */}
+      <DeleteConfirmDialog
+        open={clearAllDialogOpen}
+        onOpenChange={setClearAllDialogOpen}
+        onConfirm={handleClearAllInfluencers}
+        title="清除所有达人"
+        description="您确定要清除当前期数下的所有达人合作记录吗？此操作不可撤销，但不会删除期数本身。"
+        itemName={selectedPeriod ? `${selectedPeriod} - 所有达人记录` : undefined}
       />
     </div>
   )

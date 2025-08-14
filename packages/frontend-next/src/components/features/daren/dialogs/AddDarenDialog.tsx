@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { darenApi, type Daren } from '@/lib/api'
 import { CookieStorage } from '@/lib/cookieStorage'
-import { normalizeDarenData } from '@/lib/utils'
+// 移除了 normalizeDarenData 导入，现在由后端处理数据标准化
 import { Plus, Link, Loader2, AlertCircle, CheckCircle, X, Cookie } from 'lucide-react'
 import { useToast } from '@/components/shared/feedback/NotificationSystem'
 
@@ -168,9 +168,8 @@ export function AddDarenDialog({ open: externalOpen, onOpenChange, onSuccess }: 
         periodData: []
       }
 
-      // 标准化数据
-      const normalizedData = normalizeDarenData(darenData)
-      const newDaren = await darenApi.create(normalizedData)
+      // 直接发送数据，让后端处理标准化
+      const newDaren = await darenApi.create(darenData)
       toast.success('添加达人成功', `${formData.nickname} 已成功添加到系统`)
       onSuccess?.(newDaren)
       setOpen(false)

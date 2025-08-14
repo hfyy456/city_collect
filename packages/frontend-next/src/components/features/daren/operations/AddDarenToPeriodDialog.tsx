@@ -133,6 +133,48 @@ export function AddDarenToPeriodDialog({ period, onSuccess }: AddDarenToPeriodDi
     }))
   }
 
+  /**
+   * 创建新达人并自动选择
+   */
+  const handleCreateNewDaren = async (nickname: string) => {
+    if (!nickname.trim()) {
+      toast.warning('请输入达人昵称')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const darenData: Partial<Daren> = {
+        nickname: nickname.trim(),
+        xiaohongshuId: '',
+        homePage: '',
+        followers: 0,
+        ipLocation: '',
+        contactInfo: '',
+        likesAndCollections: 0,
+        remarks: '',
+        periodData: []
+      }
+
+      // 直接发送数据，让后端处理标准化
+      const newDaren = await darenApi.create(darenData)
+      
+      toast.success('创建达人成功', `${nickname} 已成功添加到系统`)
+      
+      // 自动选择新创建的达人
+      setSelectedDaren(newDaren)
+      setSearchTerm('')
+      
+      // 重新加载达人列表
+      await loadAllDarens()
+    } catch (error) {
+      console.error('创建达人失败:', error)
+      toast.error('创建达人失败', '请检查网络连接或联系技术支持')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -170,8 +212,22 @@ export function AddDarenToPeriodDialog({ period, onSuccess }: AddDarenToPeriodDi
                 {/* 达人列表 */}
                 <div className="border rounded-lg max-h-60 overflow-y-auto">
                   {filteredDarens.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500">
-                      {searchTerm ? '未找到匹配的达人' : '暂无可添加的达人'}
+                    <div className="p-4 text-center text-gray-500 space-y-3">
+                      <div>{searchTerm ? '未找到匹配的达人' : '暂无可添加的达人'}</div>
+                      {searchTerm && (
+                        <div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCreateNewDaren(searchTerm)}
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            创建新达人 "{searchTerm}"
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="divide-y">
@@ -199,6 +255,20 @@ export function AddDarenToPeriodDialog({ period, onSuccess }: AddDarenToPeriodDi
                           </div>
                         </div>
                       ))}
+                      {searchTerm && (
+                        <div className="p-3 border-t bg-gray-50">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCreateNewDaren(searchTerm)}
+                            className="w-full text-blue-600 border-blue-200 hover:bg-blue-100"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            创建新达人 "{searchTerm}"
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
